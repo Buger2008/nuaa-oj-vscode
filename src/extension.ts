@@ -76,6 +76,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return ProblemPanel.show(ctx, detail, service, context.extensionUri, false);
   };
 
+  const revealPanel = (panel: ProblemPanel): void => {
+    try {
+      if (!panel.isDisposed) panel.panel.reveal(vscode.ViewColumn.Beside, true);
+    } catch {
+      /* panel disposed */
+    }
+  };
+
   const requireContext = async (): Promise<ProblemContext | undefined> => {
     const ctx = await service.contextFromActiveEditor();
     if (ctx) {
@@ -262,7 +270,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!ctx) return;
     if (!(await auth.ensureLoggedIn())) return;
     const panel = await ensurePanel(ctx);
-    panel.panel.reveal(vscode.ViewColumn.Beside, true);
+    revealPanel(panel);
     if (action === 'test') {
       panel.postStatus('正在编译并运行样例…');
       const res = await service.runTest(ctx);
@@ -286,7 +294,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     setCurrent(ctx);
     const panel = await ensurePanel(ctx);
-    panel.panel.reveal(vscode.ViewColumn.Beside, true);
+    revealPanel(panel);
   });
 
   reg('nuaaOj.openInBrowser', async () => {
@@ -349,7 +357,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!panel) {
       const detail = await getDetailFor(info.ctx);
       panel = await ProblemPanel.show(info.ctx, detail, service, context.extensionUri, false);
-      panel.panel.reveal(vscode.ViewColumn.Beside, true);
+      revealPanel(panel);
     }
     await panel.setActiveFile(info.ctx, info.fileUri, info.language, info.allowed);
   };

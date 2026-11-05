@@ -21,6 +21,7 @@ export class ProblemPanel {
 
   private disposables: vscode.Disposable[] = [];
   private overrideInit: Partial<InitialState> = {};
+  private disposed = false;
 
   /** Close every open problem statement panel (used when focus moves to a non-problem file). */
   static closeAll(): void {
@@ -51,6 +52,10 @@ export class ProblemPanel {
     this.panel.webview.onDidReceiveMessage((m) => this.onMessage(m), null, this.disposables);
   }
 
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
   static async show(
     ctx: ProblemContext,
     detail: ProblemDetail,
@@ -59,12 +64,22 @@ export class ProblemPanel {
     reveal = true,
   ): Promise<ProblemPanel> {
     const key = ProblemPanel.key(ctx);
-    const existing = ProblemPanel.current.get(key);
+    let existing = ProblemPanel.current.get(key);
+    if (existing && existing.isDisposed) {
+      ProblemPanel.current.delete(key);
+      existing = undefined;
+    }
     if (existing) {
       existing.detail = detail;
       existing.ctx = ctx;
       await existing.render();
-      if (reveal) existing.panel.reveal(vscode.ViewColumn.Beside, true);
+      if (reveal) {
+        try {
+          existing.panel.reveal(vscode.ViewColumn.Beside, true);
+        } catch {
+          /* panel may have been disposed */
+        }
+      }
       return existing;
     }
     const panel = vscode.window.createWebviewPanel(
@@ -79,10 +94,16 @@ export class ProblemPanel {
   }
 
   async render(): Promise<void> {
-    const base = await this.host.getInitialState(this.ctx);
-    const init = { ...base, ...this.overrideInit };
-    this.panel.title = `${this.ctx.displayId} · ${this.ctx.title}`;
-    this.panel.webview.html = renderProblemHtml(this.panel.webview, this.detail, this.ctx, init, this.extensionUri);
+    if (this.disposed) return;
+    try {
+      const base = await this.host.getInitialState(this.ctx);
+      if (this.disposed) return;
+      const init = { ...base, ...this.overrideInit };
+      this.panel.title = `${this.ctx.displayId} · ${this.ctx.title}`;
+      this.panel.webview.html = renderProblemHtml(this.panel.webview, this.detail, this.ctx, init, this.extensionUri);
+    } catch {
+      /* setting html on a disposed webview throws; ignore */
+    }
   }
 
   /**
@@ -90,6 +111,7 @@ export class ProblemPanel {
    * and if that language is forbidden for the problem, the submit button is disabled.
    */
   async setActiveFile(ctx: ProblemContext, fileUri: vscode.Uri, language: string, allowed: boolean): Promise<void> {
+    if (this.disposed) return;
     this.ctx = ctx;
     this.ctx.solutionFile = path.basename(fileUri.fsPath);
     if (allowed) {
@@ -110,25 +132,36 @@ export class ProblemPanel {
     }
   }
 
+  /** Safe postMessage that never throws when the webview has been disposed. */
+  private post(msg: any): void {
+    if (this.disposed) return;
+    try {
+      void this.panel.webview.postMessage(msg);
+    } catch {
+      /* webview disposed */
+    }
+  }
+
   postStatus(text: string) {
-    this.panel.webview.postMessage({ type: 'status', text });
+    this.post({ type: 'status', text });
   }
   postError(text: string) {
-    this.panel.webview.postMessage({ type: 'error', text });
+    this.post({ type: 'error', text });
   }
   postTestResult(result: RunResult) {
-    this.panel.webview.postMessage({ type: 'testResult', result });
+    this.post({ type: 'testResult', result });
   }
   postSubmitResult(result: any) {
-    this.panel.webview.postMessage({ type: 'submitResult', result });
+    this.post({ type: 'submitResult', result });
   }
 
   private async onMessage(m: any) {
+    if (this.disposed) return;
     try {
       switch (m?.type) {
         case 'ready': {
           const init = await this.host.getInitialState(this.ctx);
-          this.panel.webview.postMessage({ type: 'meta', language: init.language });
+          this.post({ type: 'meta', language: init.language });
           break;
         }
         case 'test': {
@@ -146,7 +179,7 @@ export class ProblemPanel {
           const r = await this.host.loadLastAcceptedCode(this.ctx);
           if (r.ok) {
             if (r.fileName && r.language) {
-              this.panel.webview.postMessage({ type: 'languageChanged', language: r.language, fileName: r.fileName });
+              this.post({ type: 'languageChanged', language: r.language, fileName: r.fileName });
             }
             this.postStatus(r.message || '已载入最近通过的代码。');
           } else if (r.noCode) this.postStatus(r.message || '还没有通过过这道题，暂无最近通过的代码。');
@@ -158,7 +191,7 @@ export class ProblemPanel {
           if (res.ok) {
             this.overrideInit = {};
             await this.render();
-            this.panel.webview.postMessage({ type: 'languageChanged', language: res.language, fileName: res.fileName });
+            this.post({ type: 'languageChanged', language: res.language, fileName: res.fileName });
           } else {
             this.postError(res.message || '切换语言失败');
           }
@@ -183,6 +216,8 @@ export class ProblemPanel {
   }
 
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     ProblemPanel.current.delete(ProblemPanel.key(this.ctx));
     while (this.disposables.length) {
       const d = this.disposables.pop();
