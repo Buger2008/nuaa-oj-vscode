@@ -4,6 +4,51 @@ import { AuthManager } from './auth';
 import { statusMeta } from './status';
 import { ProblemContext, extensionToLanguage, isLanguageLocked, pickLanguage, submissionLanguage } from './context';
 
+function difficultyLabel(d: any): string {
+  switch (Number(d)) {
+    case 1:
+      return '简单';
+    case 2:
+      return '中等';
+    case 3:
+      return '困难';
+    default:
+      return '未分类';
+  }
+}
+
+function pct(n: any, total: number): string {
+  if (!total) return '0%';
+  return ((Number(n) || 0) / total * 100).toFixed(2) + '%';
+}
+
+/** Rich hover tooltip: difficulty + verdict pass-rate distribution. */
+function buildProblemTooltip(p: any): vscode.MarkdownString {
+  const md = new vscode.MarkdownString();
+  md.appendMarkdown(`**${p.problemId ?? p.displayPid ?? ''}  ${p.title ?? ''}**\n\n`);
+  md.appendMarkdown(`难度：**${difficultyLabel(p.difficulty)}**\n\n`);
+  const total = Number(p.total) || 0;
+  if (total > 0) {
+    const rows: Array<[string, string]> = [
+      ['AC', 'ac'],
+      ['WA', 'wa'],
+      ['TLE', 'tle'],
+      ['MLE', 'mle'],
+      ['RE', 're'],
+      ['PE', 'pe'],
+      ['CE', 'ce'],
+      ['SE', 'se'],
+    ];
+    const lines = rows.map(([label, key]) => `${label}  ${pct(p[key], total)}`);
+    if (Number(p.pa) > 0) lines.push(`PA  ${pct(p.pa, total)}`);
+    md.appendMarkdown(lines.join('  \n'));
+    md.appendMarkdown(`\n\n共 ${total} 次提交`);
+  } else {
+    md.appendMarkdown('暂无提交统计');
+  }
+  return md;
+}
+
 export class ProblemsProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChange = new vscode.EventEmitter<vscode.TreeItem | undefined>();
   readonly onDidChangeTreeData = this._onDidChange.event;
@@ -54,7 +99,7 @@ export class ProblemsProvider implements vscode.TreeDataProvider<vscode.TreeItem
   private makeItem(p: any): vscode.TreeItem {
     const label = `${p.problemId}  ${p.title}`;
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-    item.tooltip = `${p.title}\n编号 ${p.problemId}${p.difficulty ? ' · 难度 ' + p.difficulty : ''}`;
+    item.tooltip = buildProblemTooltip(p);
     item.contextValue = 'problem';
     item.iconPath = new vscode.ThemeIcon(p.difficulty && p.difficulty >= 3 ? 'flame' : 'symbol-method');
     item.command = {
@@ -331,7 +376,7 @@ export class TrainingProvider implements vscode.TreeDataProvider<vscode.TreeItem
       const it = new vscode.TreeItem(`${p.problemId}  ${p.title}`, vscode.TreeItemCollapsibleState.None);
       (it as any).kind = 'problem';
       it.iconPath = new vscode.ThemeIcon(p.difficulty && p.difficulty >= 3 ? 'flame' : 'symbol-method');
-      it.tooltip = `${p.title}\n训练题 ${p.problemId}`;
+      it.tooltip = buildProblemTooltip(p);
       it.contextValue = 'trainingProblem';
       it.command = {
         command: 'nuaaOj.openProblem',
