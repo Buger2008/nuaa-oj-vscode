@@ -295,6 +295,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     service.openInBrowser(ctx);
   });
 
+  reg('nuaaOj.loadLastAcceptedCode', async () => {
+    const ctx = currentProvider.current || (await service.contextFromActiveEditor());
+    if (!ctx) {
+      vscode.window.showInformationMessage('请先打开一个题目。');
+      return;
+    }
+    const res = await service.loadLastAcceptedCode(ctx);
+    if (res.ok) vscode.window.showInformationMessage(res.message || '已载入最近通过的代码。');
+    else if (res.noCode) vscode.window.showInformationMessage(res.message || '还没有通过过这道题。');
+    else if (!res.cancelled) vscode.window.showWarningMessage(res.message || '无法获取最近通过的代码。');
+  });
+
   // Cache problem details so switching between files of the same problem doesn't refetch.
   const detailCache = new Map<string, ProblemDetail>();
   const getDetailFor = async (ctx: ProblemContext): Promise<ProblemDetail> => {

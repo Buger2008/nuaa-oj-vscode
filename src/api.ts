@@ -264,6 +264,14 @@ export class OjApi {
     return this.request('/api/get-submission-detail', { query: { submitId } });
   }
 
+  /** The current user's most recent accepted (AC) code for a problem. Empty code means never AC. */
+  async getUserLastAcceptedCode(
+    pid: number,
+    cid?: number,
+  ): Promise<{ submitId?: number; code: string; language?: string }> {
+    return this.request('/api/get-last-ac-code', { query: { pid, cid } });
+  }
+
   async getAllCaseResult(submitId: number): Promise<JudgeCaseResult> {
     return this.request('/api/get-all-case-result', { query: { submitId } });
   }

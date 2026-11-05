@@ -531,6 +531,53 @@ export class NuaaOjService implements ProblemPanelHost {
     vscode.env.openExternal(vscode.Uri.parse(ctx.url));
   }
 
+  /**
+   * Fetch the user's most recent AC code for the problem and overwrite the current solution file
+   * (after confirmation). If the user has never AC'd it, return noCode so the UI can show a hint.
+   */
+  async loadLastAcceptedCode(
+    ctx: ProblemContext,
+  ): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean }> {
+    if (!(await this.auth.ensureLoggedIn())) return { ok: false, message: '未登录' };
+    const fileUri = await this.getSolutionUri(ctx);
+    if (!fileUri) return { ok: false, message: '未找到对应的代码文件。' };
+    let vo: { submitId?: number; code: string; language?: string };
+    try {
+      vo = await this.auth.api.getUserLastAcceptedCode(ctx.pid);
+    } catch (e: any) {
+      return { ok: false, message: `获取最近通过代码失败：${e?.message ?? e}` };
+    }
+    const code = vo?.code || '';
+    if (!code.trim()) {
+      return { ok: false, noCode: true, message: '还没有通过过这道题，暂无最近通过的代码。' };
+    }
+    if (code.length < 400 && /hidden|super administrator|已被隐藏|隐藏/.test(code)) {
+      return { ok: false, message: '网站已开启“隐藏非比赛提交代码”，无法获取最近通过的代码。' };
+    }
+    await this.saveDocument(fileUri);
+    const fileName = path.basename(fileUri.fsPath);
+    const lang = vo.language || '';
+    const confirm = await vscode.window.showWarningMessage(
+      `将用最近通过的代码覆盖当前文件「${fileName}」${lang ? `（语言：${lang}）` : ''}。现有内容会被替换，确定吗？`,
+      { modal: true },
+      '覆盖',
+    );
+    if (confirm !== '覆盖') return { ok: false, cancelled: true };
+    try {
+      const doc = await vscode.workspace.openTextDocument(fileUri);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), code);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (applied) await doc.save();
+    } catch (e: any) {
+      return { ok: false, message: `写入文件失败：${e?.message ?? e}` };
+    }
+    return {
+      ok: true,
+      message: `已载入最近通过的代码${vo.submitId ? `（#${vo.submitId}）` : ''}，已覆盖「${fileName}」。`,
+    };
+  }
+
   copySample(text: string): void {
     vscode.env.clipboard.writeText(text);
     vscode.window.setStatusBarMessage('已复制样例输入到剪贴板', 2000);

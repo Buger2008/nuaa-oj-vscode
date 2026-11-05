@@ -186,6 +186,7 @@ export function renderProblemHtml(
 <div class="toolbar">
   <button id="btn-test">▶ 用样例测试</button>
   <button id="btn-submit" ${canSubmit ? '' : 'disabled title="当前文件语言被本题禁止，无法提交"'}>☁ 提交代码</button>
+  <button class="secondary" id="btn-lastac" title="获取你最近一次通过的代码并覆盖当前文件">⤓ 最近AC代码</button>
   <button class="secondary" id="btn-browser">在浏览器打开</button>
   <button class="secondary" id="btn-refresh">刷新题面</button>
 </div>
@@ -224,6 +225,7 @@ ${bodyHtml}
 
   $('btn-test').addEventListener('click', () => vscode.postMessage({ type: 'test' }));
   $('btn-submit').addEventListener('click', () => vscode.postMessage({ type: 'submit' }));
+  $('btn-lastac').addEventListener('click', () => vscode.postMessage({ type: 'loadAc' }));
   $('btn-browser').addEventListener('click', () => vscode.postMessage({ type: 'openInBrowser' }));
   $('btn-refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
   document.querySelectorAll('[data-copy-sample]').forEach((b) => {
