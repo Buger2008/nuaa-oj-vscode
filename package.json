@@ -1,0 +1,366 @@
+{
+  "name": "nuaa-oj",
+  "displayName": "NUAA OJ",
+  "description": "在 VS Code 中直接登录、查找、编写、测试并提交 NUAA OJ（HOJ）题目，无需浏览器。",
+  "version": "0.8.1",
+  "publisher": "buger",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "oj",
+    "nuaa",
+    "hoj",
+    "competitive programming",
+    "online judge"
+  ],
+  "icon": "resources/nuaa-oj.png",
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "nuaaOj.login",
+        "title": "NUAA OJ: 登录 / 切换账号",
+        "icon": "$(account)"
+      },
+      {
+        "command": "nuaaOj.logout",
+        "title": "NUAA OJ: 退出登录",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "nuaaOj.openProblem",
+        "title": "NUAA OJ: 打开题目（输入题目编号或链接）",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "nuaaOj.openFromClipboard",
+        "title": "NUAA OJ: 从剪贴板链接打开题目"
+      },
+      {
+        "command": "nuaaOj.searchProblems",
+        "title": "NUAA OJ: 搜索题目",
+        "icon": "$(search)"
+      },
+      {
+        "command": "nuaaOj.openTraining",
+        "title": "NUAA OJ: 浏览训练题单",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "nuaaOj.selectLanguage",
+        "title": "NUAA OJ: 选择提交语言",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "nuaaOj.testCurrent",
+        "title": "NUAA OJ: 用样例测试当前代码",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "nuaaOj.submitCurrent",
+        "title": "NUAA OJ: 提交当前代码",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "nuaaOj.showProblem",
+        "title": "NUAA OJ: 重新显示当前题目描述",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "nuaaOj.openInBrowser",
+        "title": "NUAA OJ: 在浏览器中打开当前题目",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "nuaaOj.refreshSubmissions",
+        "title": "NUAA OJ: 刷新我的提交",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nuaaOj.refreshProblems",
+        "title": "NUAA OJ: 刷新题目列表",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nuaaOj.refreshTraining",
+        "title": "NUAA OJ: 刷新训练题单",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nuaaOj.refreshHomework",
+        "title": "NUAA OJ: 刷新作业",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nuaaOjContainer",
+          "title": "NUAA OJ",
+          "icon": "resources/nuaa-oj.svg"
+        }
+      ]
+    },
+    "views": {
+      "nuaaOjContainer": [
+        {
+          "id": "nuaaOjCurrent",
+          "name": "当前题目",
+          "icon": "resources/nuaa-oj.svg"
+        },
+        {
+          "id": "nuaaOjProblems",
+          "name": "题目",
+          "icon": "resources/nuaa-oj.svg"
+        },
+        {
+          "id": "nuaaOjHomework",
+          "name": "作业",
+          "icon": "resources/nuaa-oj.svg"
+        },
+        {
+          "id": "nuaaOjTraining",
+          "name": "训练题单",
+          "icon": "resources/nuaa-oj.svg"
+        },
+        {
+          "id": "nuaaOjSubmissions",
+          "name": "我的提交",
+          "icon": "resources/nuaa-oj.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "nuaaOjProblems",
+        "contents": "尚未登录。\n[登录 NUAA OJ](command:nuaaOj.login)\n登录后即可搜索并打开题目。"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "nuaaOj.login",
+          "when": "view == nuaaOjProblems || view == nuaaOjHomework || view == nuaaOjTraining || view == nuaaOjSubmissions || view == nuaaOjCurrent",
+          "group": "navigation@0"
+        },
+        {
+          "command": "nuaaOj.searchProblems",
+          "when": "view == nuaaOjProblems",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nuaaOj.openProblem",
+          "when": "view == nuaaOjProblems",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nuaaOj.openTraining",
+          "when": "view == nuaaOjProblems",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nuaaOj.refreshProblems",
+          "when": "view == nuaaOjProblems",
+          "group": "navigation@3"
+        },
+        {
+          "command": "nuaaOj.refreshTraining",
+          "when": "view == nuaaOjTraining",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nuaaOj.refreshHomework",
+          "when": "view == nuaaOjHomework",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nuaaOj.selectLanguage",
+          "when": "view == nuaaOjCurrent",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nuaaOj.showProblem",
+          "when": "view == nuaaOjCurrent",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nuaaOj.refreshSubmissions",
+          "when": "view == nuaaOjSubmissions",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "nuaaOj.testCurrent",
+          "when": "nuaaOj.hasProblem && resourceScheme == file",
+          "group": "navigation"
+        },
+        {
+          "command": "nuaaOj.submitCurrent",
+          "when": "nuaaOj.hasProblem && nuaaOj.canSubmit && resourceScheme == file",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "NUAA OJ",
+      "properties": {
+        "nuaaOj.baseUrl": {
+          "type": "string",
+          "default": "https://oj.nuaa.edu.cn",
+          "description": "OJ 站点根地址（不要带结尾斜杠）。"
+        },
+        "nuaaOj.username": {
+          "type": "string",
+          "default": "",
+          "description": "登录用户名 / 学号（密码保存在系统密钥库中，不会明文写入设置）。"
+        },
+        "nuaaOj.recommendation.userId": {
+          "type": "string",
+          "default": "",
+          "description": "作业（learning-map）接口使用的用户 ID。留空则使用当前登录用户名。"
+        },
+        "nuaaOj.defaultLanguage": {
+          "type": "string",
+          "default": "C++",
+          "enum": [
+            "C",
+            "C With O2",
+            "C++",
+            "C++ With O2",
+            "C++ 17",
+            "C++ 17 With O2",
+            "C++ 20",
+            "C++ 20 With O2",
+            "Java",
+            "Python3",
+            "Python2",
+            "Golang",
+            "C#",
+            "PHP",
+            "PyPy2",
+            "PyPy3",
+            "JavaScript Node",
+            "JavaScript V8",
+            "Ruby",
+            "Rust"
+          ],
+          "markdownDescription": "新建题目文件时使用的默认语言，同时决定创建的文件扩展名与本地编译方式。提交时默认沿用文件扩展名对应的语言。"
+        },
+        "nuaaOj.problemFolder": {
+          "type": "string",
+          "default": "NUAA-OJ",
+          "description": "在工作区中保存题目文件与元数据的文件夹名。"
+        },
+        "nuaaOj.autoCreateFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "打开题目时自动创建并打开代码文件。"
+        },
+        "nuaaOj.openStatementOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "打开题目时自动弹出题面面板。"
+        },
+        "nuaaOj.pollIntervalMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "提交后轮询评测结果的间隔（毫秒）。"
+        },
+        "nuaaOj.pollTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "提交后等待评测结果的最长时间（毫秒）。"
+        },
+        "nuaaOj.compiler.c": {
+          "type": "string",
+          "default": "",
+          "description": "C 编译器。留空则自动探测（依次尝试 cl、gcc、clang），都找不到时回退 clang。"
+        },
+        "nuaaOj.compiler.cArgs": {
+          "type": "string",
+          "default": "-O2 -std=c11 -lm",
+          "description": "C 编译参数（空格分隔）。"
+        },
+        "nuaaOj.compiler.cpp": {
+          "type": "string",
+          "default": "",
+          "description": "C++ 编译器。留空则自动探测（依次尝试 cl、g++、clang++），都找不到时回退 clang++。"
+        },
+        "nuaaOj.compiler.cppArgs": {
+          "type": "string",
+          "default": "-O2 -std=c++17",
+          "description": "C++ 编译参数（空格分隔）。"
+        },
+        "nuaaOj.compiler.java": {
+          "type": "string",
+          "default": "javac",
+          "description": "Java 编译器可执行文件。"
+        },
+        "nuaaOj.compiler.javaRun": {
+          "type": "string",
+          "default": "java",
+          "description": "Java 运行器可执行文件。"
+        },
+        "nuaaOj.compiler.python": {
+          "type": "string",
+          "default": "python",
+          "description": "Python 解释器（Windows 常见为 python，Linux 常见为 python3）。"
+        },
+        "nuaaOj.compiler.javascript": {
+          "type": "string",
+          "default": "node",
+          "description": "Node.js 解释器。"
+        },
+        "nuaaOj.compiler.go": {
+          "type": "string",
+          "default": "go",
+          "description": "Go 工具链。"
+        },
+        "nuaaOj.compiler.rust": {
+          "type": "string",
+          "default": "rustc",
+          "description": "Rust 编译器。"
+        },
+        "nuaaOj.test.timeLimitExtraMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "本地测试运行时在题目时间限制基础上额外放宽的时间（毫秒）。"
+        },
+        "nuaaOj.submit.confirm": {
+          "type": "boolean",
+          "default": false,
+          "description": "提交前是否弹出确认。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.32.0",
+    "katex": "^0.19.1",
+    "markdown-it": "^13.0.2",
+    "typescript": "^5.5.4"
+  }
+}
+
+
+
+
+
+
+
+
