@@ -195,6 +195,23 @@ export class OjApi {
     return this.request('/api/get-problem-list', { query: params });
   }
 
+  /**
+   * Per-problem status of the CURRENT user for a list of internal problem ids.
+   * Returns { [pid]: { status, score } }; status 0 = AC, -10 = never submitted, else last verdict.
+   */
+  async getUserProblemStatus(
+    pidList: number[],
+    isContestProblemList = false,
+    cid?: number,
+    gid?: number,
+    containsEnd = false,
+  ): Promise<Record<string, any>> {
+    return this.request('/api/get-user-problem-status', {
+      method: 'POST',
+      body: { pidList, isContestProblemList, cid: cid ?? null, gid: gid ?? null, containsEnd },
+    });
+  }
+
   async getTrainingList(params: { currentPage?: number; limit?: number; keyword?: string } = {}): Promise<Paged<TrainingInfo>> {
     return this.request('/api/get-training-list', { query: params });
   }

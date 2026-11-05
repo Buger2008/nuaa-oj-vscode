@@ -8,7 +8,7 @@
 
 - **侧边栏登录**：活动栏「NUAA OJ」每个面板标题栏都有登录按钮，点开是传统账号密码表单；密码保存在系统密钥库（SecretStorage），JWT 过期自动续登。
 - **多个题库入口，贴合 OJ 结构**：活动栏「NUAA OJ」有「当前题目」「作业」「题目」「训练题单」「我的提交」五个面板。
-  - 「题目」对应 [`/problem`](https://oj.nuaa.edu.cn/problem) 题库，**自动翻页加载全部题目**（如 885 题），可按题号/标题搜索；**鼠标悬停题目会显示难度与各状态通过率**（AC/WA/TLE/MLE/RE/PE/CE/SE）。
+  - 「题目」对应 [`/problem`](https://oj.nuaa.edu.cn/problem) 题库，**自动翻页加载全部题目**（如 885 题），可按题号/标题搜索；**鼠标悬停题目会显示难度与各状态通过率**（AC/WA/TLE/MLE/RE/PE/CE/SE）；**已通过的题目前显示 ✓，尝试未通过的显示“未通过”**（与作业一致）。
   - 「训练题单」对应 [`/training`](https://oj.nuaa.edu.cn/training) 的练习包，以**文件夹形式**呈现：分类文件夹 → 训练文件夹 → 题目；展开训练时按需加载其题目，点题目直接打开。
   - 「作业」来自推荐系统 `recommendation-api/learning-map/<用户名>`，按**课程章节（知识点）文件夹**呈现：显示每章作业通过进度（如 `作业 5/5`）、`当前`章节、每题 AC 标记，章节下还含一个「练习」子文件夹；点题目直接打开。
 - **打开题目即建文件**：输入题号（如 `E1`、`9999`、`CPP2-4`）或粘贴题目/训练题链接，自动在 `NUAA-OJ/<题号 标题>/` 下新建以**题目编号**命名的代码文件（如 `E1.cpp`）并打开，同时弹出题面面板。
@@ -36,7 +36,7 @@ cd nuaa-oj-vscode
 npm install
 npm run compile
 npx vsce package --no-dependencies --allow-missing-repository
-code --install-extension nuaa-oj-0.8.2.vsix
+code --install-extension nuaa-oj-0.8.3.vsix
 ```
 
 也可以用 F5 调试：用 VS Code 打开本文件夹，按 `F5` 启动扩展开发宿主窗口。
@@ -125,6 +125,7 @@ nuaa-oj-vscode/
 - 独立、可打包的扩展，参考了 cph-ng 的「题目 + 测试点 + 面板」思路，但针对 HOJ 的 HTTP API 重新实现，不依赖浏览器插件。
 - 比赛（contest）题目暂未直接支持（需要先注册比赛、且比赛提交规则不同），会提示在浏览器打开。
 - 本扩展仅用于辅助个人学习，请遵守学校 OJ 的使用规定。
+
 
 
 

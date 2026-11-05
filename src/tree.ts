@@ -49,6 +49,47 @@ function buildProblemTooltip(p: any): vscode.MarkdownString {
   return md;
 }
 
+/** Fetch the current user's status (0=AC, -10=never, else last verdict) for internal pids, chunked. */
+async function fetchStatusMap(auth: AuthManager, pids: any[]): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  const ids = Array.from(new Set(pids.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0)));
+  if (!ids.length) return map;
+  try {
+    if (!(await auth.ensureLoggedIn(false))) return map;
+  } catch {
+    return map;
+  }
+  const chunk = 300;
+  for (let i = 0; i < ids.length; i += chunk) {
+    const part = ids.slice(i, i + chunk);
+    try {
+      const res = await auth.api.getUserProblemStatus(part);
+      for (const key of Object.keys(res || {})) {
+        const v: any = (res as any)[key];
+        const status = v && typeof v === 'object' ? v.status : v;
+        map.set(Number(key), Number(status));
+      }
+    } catch {
+      /* ignore this chunk */
+    }
+  }
+  return map;
+}
+
+/** Mark a tree item with the user's AC/attempted state. */
+function applyStatusVisual(item: vscode.TreeItem, status?: number): void {
+  if (status === undefined) return;
+  if (status === 0) {
+    item.iconPath = new vscode.ThemeIcon('pass-filled');
+    item.description = '✓';
+  } else if (status === -10) {
+    // never submitted: leave the difficulty icon, no badge
+  } else {
+    item.iconPath = new vscode.ThemeIcon('circle-large-outline');
+    item.description = '未通过';
+  }
+}
+
 export class ProblemsProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChange = new vscode.EventEmitter<vscode.TreeItem | undefined>();
   readonly onDidChangeTreeData = this._onDidChange.event;
@@ -87,7 +128,8 @@ export class ProblemsProvider implements vscode.TreeDataProvider<vscode.TreeItem
         pages = page.pages || 1;
         currentPage++;
       } while (currentPage <= pages && currentPage <= 50);
-      this.items = all.map((p: any) => this.makeItem(p));
+      const statusMap = await fetchStatusMap(this.auth, all.map((p: any) => p.pid));
+      this.items = all.map((p: any) => this.makeItem(p, statusMap.get(Number(p.pid))));
       this.notice = this.items.length ? undefined : '没有找到题目。';
     } catch (e: any) {
       this.items = [];
@@ -96,12 +138,13 @@ export class ProblemsProvider implements vscode.TreeDataProvider<vscode.TreeItem
     this.refresh();
   }
 
-  private makeItem(p: any): vscode.TreeItem {
+  private makeItem(p: any, status?: number): vscode.TreeItem {
     const label = `${p.problemId}  ${p.title}`;
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
     item.tooltip = buildProblemTooltip(p);
     item.contextValue = 'problem';
     item.iconPath = new vscode.ThemeIcon(p.difficulty && p.difficulty >= 3 ? 'flame' : 'symbol-method');
+    applyStatusVisual(item, status);
     item.command = {
       command: 'nuaaOj.openProblem',
       title: '打开题目',
@@ -372,12 +415,14 @@ export class TrainingProvider implements vscode.TreeDataProvider<vscode.TreeItem
     }
     if (!probs.length) return [this.notice('该训练题单暂时没有题目。')];
     const base = vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
+    const statusMap = await fetchStatusMap(this.auth, probs.map((p: any) => p.pid));
     return probs.map((p: any) => {
       const it = new vscode.TreeItem(`${p.problemId}  ${p.title}`, vscode.TreeItemCollapsibleState.None);
       (it as any).kind = 'problem';
       it.iconPath = new vscode.ThemeIcon(p.difficulty && p.difficulty >= 3 ? 'flame' : 'symbol-method');
       it.tooltip = buildProblemTooltip(p);
       it.contextValue = 'trainingProblem';
+      applyStatusVisual(it, statusMap.get(Number(p.pid)));
       it.command = {
         command: 'nuaaOj.openProblem',
         title: '打开题目',
