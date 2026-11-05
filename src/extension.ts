@@ -302,8 +302,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     const res = await service.loadLastAcceptedCode(ctx);
-    if (res.ok) vscode.window.showInformationMessage(res.message || '已载入最近通过的代码。');
-    else if (res.noCode) vscode.window.showInformationMessage(res.message || '还没有通过过这道题。');
+    if (res.ok) {
+      currentProvider.setContext(ctx);
+      vscode.window.showInformationMessage(res.message || '已载入最近通过的代码。');
+    } else if (res.noCode) vscode.window.showInformationMessage(res.message || '还没有通过过这道题。');
     else if (!res.cancelled) vscode.window.showWarningMessage(res.message || '无法获取最近通过的代码。');
   });
 

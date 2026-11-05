@@ -532,14 +532,21 @@ export class NuaaOjService implements ProblemPanelHost {
   }
 
   /**
-   * Fetch the user's most recent AC code for the problem and overwrite the current solution file
-   * (after confirmation). If the user has never AC'd it, return noCode so the UI can show a hint.
+   * Fetch the user's most recent AC code for the problem and put it into the solution file.
+   * If the AC code's language differs from the current file, first switch/create the file for
+   * that language (same logic as changing language), then overwrite it — always after confirmation.
    */
-  async loadLastAcceptedCode(
-    ctx: ProblemContext,
-  ): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean }> {
+  async loadLastAcceptedCode(ctx: ProblemContext): Promise<{
+    ok: boolean;
+    message?: string;
+    noCode?: boolean;
+    cancelled?: boolean;
+    fileName?: string;
+    language?: string;
+    switched?: boolean;
+  }> {
     if (!(await this.auth.ensureLoggedIn())) return { ok: false, message: '未登录' };
-    const fileUri = await this.getSolutionUri(ctx);
+    let fileUri = await this.getSolutionUri(ctx);
     if (!fileUri) return { ok: false, message: '未找到对应的代码文件。' };
     let vo: { submitId?: number; code: string; language?: string };
     try {
@@ -554,15 +561,41 @@ export class NuaaOjService implements ProblemPanelHost {
     if (code.length < 400 && /hidden|super administrator|已被隐藏|隐藏/.test(code)) {
       return { ok: false, message: '网站已开启“隐藏非比赛提交代码”，无法获取最近通过的代码。' };
     }
+
+    const currentLang = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase());
+    const targetLang = vo.language || currentLang || '';
+    let switched = false;
+
+    if (targetLang && currentLang && targetLang !== currentLang) {
+      // Different language: switch/create the file for the AC code's language first.
+      if (ctx.allowedLanguages && ctx.allowedLanguages.length && !ctx.allowedLanguages.includes(targetLang)) {
+        return {
+          ok: false,
+          message: `最近通过的代码语言「${targetLang}」不在本题允许的语言内（本题允许：${ctx.allowedLanguages.join('、')}）。`,
+        };
+      }
+      const targetName = `${ctx.displayId}${languageToExtension(targetLang)}`;
+      const confirm = await vscode.window.showWarningMessage(
+        `最近通过的代码是「${targetLang}」，与当前文件语言「${currentLang}」不同。\n将切换到「${targetName}」并用最近通过的代码覆盖它，确定吗？`,
+        { modal: true },
+        '切换并覆盖',
+      );
+      if (confirm !== '切换并覆盖') return { ok: false, cancelled: true };
+      const sw = await this.changeLanguageAndCreateFile(ctx, targetLang);
+      if (!sw.ok) return { ok: false, message: sw.message || '切换到最近通过语言失败。' };
+      fileUri = (await this.getSolutionUri(ctx)) || fileUri;
+      switched = true;
+    } else {
+      const fileName = path.basename(fileUri.fsPath);
+      const confirm = await vscode.window.showWarningMessage(
+        `将用最近通过的代码覆盖当前文件「${fileName}」${targetLang ? `（语言：${targetLang}）` : ''}。现有内容会被替换，确定吗？`,
+        { modal: true },
+        '覆盖',
+      );
+      if (confirm !== '覆盖') return { ok: false, cancelled: true };
+    }
+
     await this.saveDocument(fileUri);
-    const fileName = path.basename(fileUri.fsPath);
-    const lang = vo.language || '';
-    const confirm = await vscode.window.showWarningMessage(
-      `将用最近通过的代码覆盖当前文件「${fileName}」${lang ? `（语言：${lang}）` : ''}。现有内容会被替换，确定吗？`,
-      { modal: true },
-      '覆盖',
-    );
-    if (confirm !== '覆盖') return { ok: false, cancelled: true };
     try {
       const doc = await vscode.workspace.openTextDocument(fileUri);
       const edit = new vscode.WorkspaceEdit();
@@ -572,9 +605,16 @@ export class NuaaOjService implements ProblemPanelHost {
     } catch (e: any) {
       return { ok: false, message: `写入文件失败：${e?.message ?? e}` };
     }
+    const fileName = path.basename(fileUri.fsPath);
+    const idLabel = vo.submitId ? `（#${vo.submitId}）` : '';
     return {
       ok: true,
-      message: `已载入最近通过的代码${vo.submitId ? `（#${vo.submitId}）` : ''}，已覆盖「${fileName}」。`,
+      message: switched
+        ? `已切换到 ${targetLang} 并载入最近通过的代码${idLabel}，已写入「${fileName}」。`
+        : `已载入最近通过的代码${idLabel}，已覆盖「${fileName}」。`,
+      fileName,
+      language: targetLang,
+      switched,
     };
   }
 

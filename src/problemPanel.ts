@@ -9,7 +9,7 @@ export interface ProblemPanelHost {
   runTest(ctx: ProblemContext): Promise<RunResult>;
   submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any>;
   changeLanguage(ctx: ProblemContext, language: string): Promise<{ ok: boolean; fileName?: string; language?: string; message?: string }>;
-  loadLastAcceptedCode(ctx: ProblemContext): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean }>;
+  loadLastAcceptedCode(ctx: ProblemContext): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean; fileName?: string; language?: string; switched?: boolean }>;
   openInBrowser(ctx: ProblemContext): void;
   copySample(text: string): void;
   reload(panel: ProblemPanel): Promise<void>;
@@ -144,8 +144,12 @@ export class ProblemPanel {
         }
         case 'loadAc': {
           const r = await this.host.loadLastAcceptedCode(this.ctx);
-          if (r.ok) this.postStatus(r.message || '已载入最近通过的代码。');
-          else if (r.noCode) this.postStatus(r.message || '还没有通过过这道题，暂无最近通过的代码。');
+          if (r.ok) {
+            if (r.fileName && r.language) {
+              this.panel.webview.postMessage({ type: 'languageChanged', language: r.language, fileName: r.fileName });
+            }
+            this.postStatus(r.message || '已载入最近通过的代码。');
+          } else if (r.noCode) this.postStatus(r.message || '还没有通过过这道题，暂无最近通过的代码。');
           else if (!r.cancelled) this.postError(r.message || '无法获取最近通过的代码。');
           break;
         }
