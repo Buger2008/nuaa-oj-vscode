@@ -71,12 +71,17 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage({ type: 'error', text: e?.message ?? String(e) });
       }
     });
+    const sub = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('nuaaOj.enabledTabs')) this.postTabs();
+    });
+    view.onDidDispose(() => sub.dispose());
   }
 
   refresh(): void {
     this.problemsCache = undefined;
     this.trainingsCache = undefined;
     this.postState();
+    this.postTabs();
     this.view?.webview.postMessage({ type: 'reload' });
   }
 
@@ -84,6 +89,18 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) return;
     const u = this.auth.currentUser;
     this.view.webview.postMessage({ type: 'state', loggedIn: !!u, user: this.userBrief(u) });
+  }
+
+  private enabledTabs(): string[] {
+    const all = ['home', 'problems', 'trainings', 'homework', 'status', 'rank', 'my'];
+    const cfg = vscode.workspace.getConfiguration('nuaaOj').get<string[]>('enabledTabs', all) || all;
+    const filtered = all.filter((t) => cfg.includes(t));
+    return filtered.length ? filtered : all;
+  }
+
+  postTabs(): void {
+    if (!this.view) return;
+    this.view.webview.postMessage({ type: 'tabs', tabs: this.enabledTabs() });
   }
 
   focusSearch(): void {
@@ -100,6 +117,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     switch (m?.type) {
       case 'ready':
         this.postState();
+        this.postTabs();
         break;
       case 'tab':
         await this.sendTab(m.tab, '');
@@ -530,6 +548,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); setActive(); vscode.postMessage({type:'tab', tab:activeTab}); }));
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
+ function applyTabs(tabs){ const list=Array.isArray(tabs)&&tabs.length?tabs:['home','problems','trainings','homework','status','rank','my']; const set={}; list.forEach(function(t){set[t]=1;}); document.querySelectorAll('.tab').forEach(function(b){ const t=b.getAttribute('data-tab'); if(t) b.style.display = set[t] ? '' : 'none'; }); if(!set[activeTab]){ activeTab=list[0]; setActive(); vscode.postMessage({type:'tab', tab:activeTab}); } }
 
  function needLogin(){ const d=el('div','loginbox'); const b=el('button','loginbtn','登录 NUAA OJ'); b.addEventListener('click',()=>vscode.postMessage({type:'login'})); d.appendChild(el('div','muted','登录后可浏览题目、作业与提交记录')); d.appendChild(b); content.innerHTML=''; content.appendChild(d); }
  function error(t){ content.innerHTML=''; content.appendChild(el('div','err', t)); }
@@ -889,6 +908,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  }
 
  window.addEventListener('message',(e)=>{ const m=e.data;
+   if(m.type==='tabs'){ applyTabs(m.tabs); return; }
    if(m.type==='status'){ renderStatus(m.payload, m.filters); return; }
    if(m.type==='selfTests'){ renderSelfTests(m.payload, m.filters); return; }
    if(m.type==='rank'){ renderRank(m.payload, m.filters); return; }

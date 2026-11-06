@@ -2,7 +2,7 @@
   "name": "nuaa-oj",
   "displayName": "NUAA OJ",
   "description": "在 VS Code 中直接登录、查找、编写、测试并提交 NUAA OJ（HOJ）题目，无需浏览器。",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "publisher": "buger",
   "license": "MIT",
   "engines": {
@@ -297,6 +297,40 @@
           "default": "ruby",
           "description": "Ruby 解释器。"
         },
+        "nuaaOj.enabledTabs": {
+          "type": "array",
+          "default": [
+            "home",
+            "problems",
+            "trainings",
+            "homework",
+            "status",
+            "rank",
+            "my"
+          ],
+          "items": {
+            "type": "string",
+            "enum": [
+              "home",
+              "problems",
+              "trainings",
+              "homework",
+              "status",
+              "rank",
+              "my"
+            ],
+            "enumDescriptions": [
+              "首页",
+              "自由练习",
+              "课内实验",
+              "作业",
+              "状态",
+              "排名",
+              "我的"
+            ]
+          },
+          "description": "显示哪些侧边栏选项卡。移除不想看的项即可隐藏（例如移除 rank 隐藏「排名」）。"
+        },
         "nuaaOj.test.timeLimitExtraMs": {
           "type": "number",
           "default": 1000,
@@ -325,6 +359,7 @@
     "typescript": "^5.5.4"
   }
 }
+
 
 
 
