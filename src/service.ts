@@ -404,6 +404,13 @@ export class NuaaOjService implements ProblemPanelHost {
     await UserHomePanel.show(this, this.extensionUri, uid, username);
   }
 
+  async openMyHome(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    const u: any = this.auth.currentUser;
+    if (!u) return;
+    await UserHomePanel.show(this, this.extensionUri, u.uid, u.username);
+  }
+
   async openSubmission(submitId: number): Promise<void> {
     await RecordsPanel.showDetail(this, this.extensionUri, submitId);
   }

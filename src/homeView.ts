@@ -11,6 +11,7 @@ export interface HomeCallbacks {
   openProfile: () => void;
   openSettings: () => void;
   openMessages: () => void;
+  openMyHome: () => void;
   openUser: (uid: string, username: string) => void;
   onChange?: () => void;
 }
@@ -129,6 +130,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'openMessages':
         this.cb.openMessages();
+        break;
+      case 'openMyHome':
+        this.cb.openMyHome();
         break;
       case 'openUser':
         this.cb.openUser(String(m.uid || ''), String(m.username || ''));
@@ -423,7 +427,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .loginbox{padding:24px 16px;text-align:center;}
  .loginbtn{display:inline-block;width:100%;box-sizing:border-box;padding:12px;font-size:15px;font-weight:700;color:#fff;background:#0a84ff;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(10,132,255,.4);}
  .loginbtn:hover{background:#0a74e0;}
- .card{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:14px;margin-bottom:12px;}
+ .card{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:14px;margin-bottom:12px;display:flex;gap:12px;align-items:center;}
+ .avatar-mini{width:52px;height:52px;border-radius:50%;background:rgba(10,132,255,.25);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex:none;}
+ .menu{border:1px solid var(--vscode-panel-border);border-radius:8px;overflow:hidden;}
+ .mrow{display:flex;align-items:center;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--vscode-panel-border);}
+ .mrow:last-child{border-bottom:none;}
+ .mrow:hover{background:rgba(127,127,127,.12);}
+ .mlabel{flex:1;font-size:13.5px;} .mchev{color:var(--vscode-descriptionForeground);font-size:16px;}
  .card .name{font-size:16px;font-weight:700;}
  .card .row{margin-top:6px;color:var(--vscode-descriptionForeground);}
  .btn{font-family:inherit;font-size:12.5px;padding:5px 12px;border-radius:4px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;margin-top:10px;}
@@ -608,13 +618,27 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  function renderMy(user){
    content.innerHTML='';
    if(!state.loggedIn || !user){ needLogin(); return; }
-   const card=el('div','card'); card.appendChild(el('div','name', user.nickname||user.username)); card.appendChild(el('div','row','账号：'+user.username)); if(user.school) card.appendChild(el('div','row','学校：'+user.school)); if(user.signature) card.appendChild(el('div','row',user.signature)); if(user.roles&&user.roles.length) card.appendChild(el('div','row','角色：'+user.roles.join(', ')));
-   const prof=el('button','btn','📊 能力画像'); prof.style.background='#0a84ff'; prof.style.color='#fff'; prof.style.border='none'; prof.style.marginRight='8px'; prof.addEventListener('click',()=>vscode.postMessage({type:'openProfile'})); card.appendChild(prof);
-   const st=el('button','btn','⚙ 设置'); st.style.marginRight='8px'; st.addEventListener('click',()=>vscode.postMessage({type:'openSettings'})); card.appendChild(st);
-   const msg=el('button','btn','🔔 消息'); msg.style.marginRight='8px'; msg.addEventListener('click',()=>vscode.postMessage({type:'openMessages'})); card.appendChild(msg);
-   const lo=el('button','btn','退出登录'); lo.addEventListener('click',()=>vscode.postMessage({type:'logout'})); card.appendChild(lo);
-   content.appendChild(card);
+   const card=el('div','card');
+   const initial=(user.nickname||user.username||'?').slice(0,1).toUpperCase();
+   card.appendChild(el('div','avatar-mini',initial));
+   const info=el('div');
+   info.appendChild(el('div','name', user.nickname||user.username));
+   info.appendChild(el('div','row','账号：'+user.username));
+   if(user.school) info.appendChild(el('div','row','学校：'+user.school));
+   if(user.signature) info.appendChild(el('div','row',user.signature));
+   if(user.roles&&user.roles.length) info.appendChild(el('div','row','角色：'+user.roles.join(', ')));
+   card.appendChild(info); content.appendChild(card);
+   const menu=el('div','menu');
+   function row(label, fn){ const r=el('div','mrow'); r.appendChild(el('span','mlabel',label)); r.appendChild(el('span','mchev','›')); r.addEventListener('click',fn); menu.appendChild(r); }
+   row('👤 我的主页', function(){ vscode.postMessage({type:'openMyHome'}); });
+   row('📥 我的提交', function(){ openMySubs(); });
+   row('📊 能力画像', function(){ vscode.postMessage({type:'openProfile'}); });
+   row('🔔 系统通知', function(){ vscode.postMessage({type:'openMessages'}); });
+   row('⚙ 设置', function(){ vscode.postMessage({type:'openSettings'}); });
+   row('🚪 退出登录', function(){ vscode.postMessage({type:'logout'}); });
+   content.appendChild(menu);
  }
+ function openMySubs(){ activeTab='status'; if(typeof setActive==='function') setActive(); vscode.postMessage({type:'status', onlyMine:true, status:'', page:1, size:30}); }
 
  // 我的
  let rankChartType = 'bar';
