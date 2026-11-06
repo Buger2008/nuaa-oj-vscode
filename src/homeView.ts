@@ -13,6 +13,33 @@ function esc(s: any): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function diffLabel(d: any): string {
+  switch (Number(d)) {
+    case 1: return '简单';
+    case 2: return '中等';
+    case 3: return '困难';
+    default: return '未分类';
+  }
+}
+function pctStr(n: any, t: number): string {
+  if (!t) return '0%';
+  return (((Number(n) || 0) / t) * 100).toFixed(2) + '%';
+}
+function statsTip(p: any): string {
+  const t = Number(p.total) || 0;
+  let s = '难度：' + diffLabel(p.difficulty);
+  if (t > 0) {
+    s += '\nAC ' + pctStr(p.ac, t) + '\nWA ' + pctStr(p.wa, t) + '\nTLE ' + pctStr(p.tle, t) + '\nMLE ' + pctStr(p.mle, t) +
+      '\nRE ' + pctStr(p.re, t) + '\nPE ' + pctStr(p.pe, t) + '\nCE ' + pctStr(p.ce, t) + '\nSE ' + pctStr(p.se, t) + '\n共 ' + t + ' 次提交';
+  } else {
+    s += '\n暂无提交统计';
+  }
+  return s;
+}
+function probItemView(p: any) {
+  return { id: p.problemId, title: p.title, difficulty: Number(p.difficulty) || 0, dlabel: diffLabel(p.difficulty), tip: statsTip(p), ac: false as boolean };
+}
+
 export class HomeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'nuaaOjHome';
   private view: vscode.WebviewView | undefined;
@@ -123,7 +150,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         page++;
       } while (page <= pages && page <= 50);
       const acSet = await this.fetchAcSet(all.map((p: any) => p.pid));
-      const items = all.map((p: any) => ({ id: p.problemId, title: p.title, difficulty: p.difficulty, ac: acSet.has(Number(p.pid)) }));
+      const items = all.map((p: any) => ({ id: p.problemId, title: p.title, difficulty: Number(p.difficulty) || 0, dlabel: diffLabel(p.difficulty), tip: statsTip(p), ac: acSet.has(Number(p.pid)) }));
       if (!keyword) {
         this.problemsCache = items;
         this.problemsKeyword = '';
@@ -171,7 +198,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     try {
       const probs = await this.auth.api.getTrainingProblemList(tid);
       const acSet = await this.fetchAcSet(probs.map((p: any) => p.pid));
-      const items = probs.map((p: any) => ({ id: p.problemId, title: p.title, difficulty: p.difficulty, ac: acSet.has(Number(p.pid)), value: `training/${tid}/problem/${p.problemId}` }));
+      const items = probs.map((p: any) => ({ id: p.problemId, title: p.title, difficulty: Number(p.difficulty) || 0, dlabel: diffLabel(p.difficulty), tip: statsTip(p), ac: acSet.has(Number(p.pid)), value: `training/${tid}/problem/${p.problemId}` }));
       this.view.webview.postMessage({ type: 'trainingProblems', tid, items });
     } catch (e: any) {
       this.view.webview.postMessage({ type: 'trainingProblems', tid, error: e?.message ?? String(e), items: [] });
@@ -244,6 +271,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .item .t{overflow:hidden;text-overflow:ellipsis;flex:1;}
  .id{color:var(--vscode-descriptionForeground);font-size:11.5px;}
  .ok{color:#67c23a;font-weight:700;}
+ .diff{font-size:10px;padding:0 5px;border-radius:8px;color:#fff;flex:none;}
+ .diff.d1{background:#67c23a;} .diff.d2{background:#e6a23c;} .diff.d3{background:#f56c6c;} .diff.d0{background:#909399;}
  .muted{color:var(--vscode-descriptionForeground);}
  .folder{padding:6px;font-weight:600;cursor:pointer;display:flex;gap:6px;align-items:center;}
  .folder:hover{background:rgba(127,127,127,.1);}
@@ -288,7 +317,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(data.needLogin){ needLogin(); return; }
    if(data.error){ error(data.error); return; }
    const list=el('div');
-   (data.items||[]).forEach((p)=>{ const it=el('div','item'); const id=el('span','id',p.id); it.appendChild(id); const t=el('span','t',p.title); it.appendChild(t); if(p.ac) it.appendChild(el('span','ok','✓')); it.title=p.title+' ('+p.id+')'; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); list.appendChild(it); });
+   (data.items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel||'')); it.appendChild(el('span','t',p.title)); if(p.ac) it.appendChild(el('span','ok','✓')); it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); list.appendChild(it); });
    content.appendChild(list);
    if(!(data.items||[]).length) content.appendChild(el('div','empty','没有找到题目。'));
  }
@@ -299,7 +328,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(!box) return;
    box.innerHTML='';
    if(err){ box.appendChild(el('div','err',err)); return; }
-   (items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','t',p.title)); if(p.ac) it.appendChild(el('span','ok','✓')); it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.value})); box.appendChild(it); });
+   (items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel||'')); it.appendChild(el('span','t',p.title)); if(p.ac) it.appendChild(el('span','ok','✓')); it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.value})); box.appendChild(it); });
    if(!(items||[]).length) box.appendChild(el('div','empty','该题单暂无题目。'));
  }
  function renderTrainings(data){
