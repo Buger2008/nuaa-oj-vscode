@@ -163,10 +163,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   // ---- Search / browse ------------------------------------------------------
-  reg('nuaaOj.searchProblems', async () => {
-    homeProvider.focusSearch();
-  });
-
   reg('nuaaOj.refreshProblems', async () => {
     homeProvider.refresh();
   });

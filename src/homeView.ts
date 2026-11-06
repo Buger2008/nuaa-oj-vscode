@@ -303,14 +303,23 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(!(items||[]).length) box.appendChild(el('div','empty','该题单暂无题目。'));
  }
  function renderTrainings(data){
-   content.innerHTML=''; window.__trainingBoxes={};
+   content.innerHTML='';
    if(data.needLogin){ needLogin(); return; }
    if(data.error){ error(data.error); return; }
-   (data.items||[]).forEach((t)=>{ const wrap=el('div'); const head=el('div','folder'); head.appendChild(el('span',null,'📁')); head.appendChild(el('span',null,t.title)); head.appendChild(el('span','badge',(t.count!=null? t.count+' 题':'')+(t.category?' · '+t.category:'')));
-     const kids=el('div','children'); kids.style.display='none'; window.__trainingBoxes[t.tid]=kids;
-     head.addEventListener('click',()=>{ if(kids.style.display==='none'){ kids.style.display='block'; if(!kids.dataset.loaded){ kids.dataset.loaded='1'; kids.appendChild(el('div','muted','加载中…')); vscode.postMessage({type:'expandTraining', tid:t.tid}); } } else kids.style.display='none'; });
-     wrap.appendChild(head); wrap.appendChild(kids); content.appendChild(wrap); });
-   if(!(data.items||[]).length) content.appendChild(el('div','empty','没有可访问的课内实验。'));
+   const all = data.items||[];
+   const inp=el('input','search'); inp.placeholder='搜索课内实验（题单名）'; content.appendChild(inp);
+   const box=el('div'); content.appendChild(box);
+   function paint(kw){
+     box.innerHTML=''; window.__trainingBoxes={};
+     const list = all.filter((t)=> !kw || String(t.title||'').indexOf(kw)>=0 || String(t.category||'').indexOf(kw)>=0);
+     list.forEach((t)=>{ const wrap=el('div'); const head=el('div','folder'); head.appendChild(el('span',null,'📁')); head.appendChild(el('span',null,t.title)); head.appendChild(el('span','badge',(t.count!=null? t.count+' 题':'')+(t.category?' · '+t.category:'')));
+       const kids=el('div','children'); kids.style.display='none'; window.__trainingBoxes[t.tid]=kids;
+       head.addEventListener('click',()=>{ if(kids.style.display==='none'){ kids.style.display='block'; if(!kids.dataset.loaded){ kids.dataset.loaded='1'; kids.appendChild(el('div','muted','加载中…')); vscode.postMessage({type:'expandTraining', tid:t.tid}); } } else kids.style.display='none'; });
+       wrap.appendChild(head); wrap.appendChild(kids); box.appendChild(wrap); });
+     if(!list.length) box.appendChild(el('div','empty','没有匹配的课内实验。'));
+   }
+   inp.addEventListener('input',()=>paint(inp.value.trim()));
+   paint('');
  }
  // 作业
  function renderHomework(data){
