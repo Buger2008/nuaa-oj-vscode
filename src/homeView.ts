@@ -72,7 +72,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       }
     });
     const sub = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('nuaaOj.enabledTabs')) this.postTabs();
+      if (e.affectsConfiguration('nuaaOj.tabs')) this.postTabs();
     });
     view.onDidDispose(() => sub.dispose());
   }
@@ -93,8 +93,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
   private enabledTabs(): string[] {
     const all = ['home', 'problems', 'trainings', 'homework', 'status', 'rank', 'my'];
-    const cfg = vscode.workspace.getConfiguration('nuaaOj').get<string[]>('enabledTabs', all) || all;
-    const filtered = all.filter((t) => cfg.includes(t));
+    const cfg = vscode.workspace.getConfiguration('nuaaOj');
+    const filtered = all.filter((t) => cfg.get<boolean>(`tabs.${t}`, true));
     return filtered.length ? filtered : all;
   }
 
