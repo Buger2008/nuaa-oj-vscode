@@ -319,6 +319,7 @@ export class OjApi {
     currentPage?: number;
     onlyMine?: boolean;
     problemID?: string;
+    completeProblemID?: boolean;
     status?: number;
     username?: string;
   } = {}): Promise<Paged<SubmissionRecord>> {

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { AuthManager } from './auth';
 import { OjError } from './api';
+import { RecordsPanel } from './recordsPanel';
 import {
   ProblemContext,
   buildContext,
@@ -78,6 +79,45 @@ export class NuaaOjService implements ProblemPanelHost {
   ) {}
 
   private tempNotified = false;
+  private testHistory = new Map<string, any[]>();
+
+  private historyKey(ctx: ProblemContext): string {
+    return `${ctx.kind}:${ctx.tid ?? 0}:${ctx.displayId}`;
+  }
+
+  private recordTest(ctx: ProblemContext, kind: string, result: RunResult): void {
+    if (result.skipped) return;
+    const key = this.historyKey(ctx);
+    const arr = this.testHistory.get(key) || [];
+    const passed = result.cases.filter((c) => c.status === 'AC' || c.status === 'OK').length;
+    arr.unshift({ at: Date.now(), kind, language: result.language, passed, total: result.cases.length, ok: result.ok });
+    this.testHistory.set(key, arr.slice(0, 50));
+  }
+
+  // ---- RecordsPanel host -----------------------------------------------------
+  async fetchSubmissions(ctx: ProblemContext, onlyMine: boolean): Promise<{ records: any[]; total: number }> {
+    if (!(await this.auth.ensureLoggedIn())) return { records: [], total: 0 };
+    const page = await this.auth.api.getSubmissionList({
+      limit: 100,
+      currentPage: 1,
+      onlyMine,
+      problemID: ctx.displayId,
+      completeProblemID: true,
+    });
+    return { records: page.records || [], total: page.total || 0 };
+  }
+
+  async getTestHistory(ctx: ProblemContext): Promise<any[]> {
+    return this.testHistory.get(this.historyKey(ctx)) || [];
+  }
+
+  submissionUrl(submitId: number): string {
+    return `${this.base()}/submission-detail/${submitId}`;
+  }
+
+  async openRecords(ctx: ProblemContext, tab: 'my' | 'all' | 'test'): Promise<void> {
+    await RecordsPanel.show(ctx, this, this.extensionUri, tab);
+  }
 
   private base(): string {
     return vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
@@ -450,6 +490,7 @@ export class NuaaOjService implements ProblemPanelHost {
       if ((c.expected || '').trim() === '' && (c.status === 'WA' || c.status === 'AC')) c.status = 'OK';
     }
     result.ok = result.cases.every((c) => c.status === 'AC' || c.status === 'OK');
+    this.recordTest(ctx, '本地测试', result);
     return result;
   }
 
@@ -599,7 +640,15 @@ export class NuaaOjService implements ProblemPanelHost {
         timeMs: Number(vo.time) || 0,
       });
     }
-    return { ok: cases.every((c) => c.status === 'AC' || c.status === 'OK'), language, cases, totalTimeMs: Date.now() - start, cloud: true };
+    const result: RunResult = {
+      ok: cases.every((c) => c.status === 'AC' || c.status === 'OK'),
+      language,
+      cases,
+      totalTimeMs: Date.now() - start,
+      cloud: true,
+    };
+    this.recordTest(ctx, isCustom ? '云端自定义' : '云端样例', result);
+    return result;
   }
 
   async submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any> {
@@ -699,6 +748,10 @@ export class NuaaOjService implements ProblemPanelHost {
 
   openInBrowser(ctx: ProblemContext): void {
     vscode.env.openExternal(vscode.Uri.parse(ctx.url));
+  }
+
+  openExternal(url: string): void {
+    vscode.env.openExternal(vscode.Uri.parse(url));
   }
 
   /**

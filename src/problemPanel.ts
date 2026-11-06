@@ -11,6 +11,7 @@ export interface ProblemPanelHost {
   submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any>;
   changeLanguage(ctx: ProblemContext, language: string): Promise<{ ok: boolean; fileName?: string; language?: string; message?: string }>;
   loadLastAcceptedCode(ctx: ProblemContext): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean; fileName?: string; language?: string; switched?: boolean }>;
+  openRecords(ctx: ProblemContext, tab: 'my' | 'all' | 'test'): Promise<void>;
   openInBrowser(ctx: ProblemContext): void;
   copySample(text: string): void;
   reload(panel: ProblemPanel): Promise<void>;
@@ -231,6 +232,9 @@ export class ProblemPanel {
         }
         case 'openInBrowser':
           this.host.openInBrowser(this.ctx);
+          break;
+        case 'openRecords':
+          await this.host.openRecords(this.ctx, (m.tab as 'my' | 'all' | 'test') || 'my');
           break;
         case 'refresh':
           await this.host.reload(this);

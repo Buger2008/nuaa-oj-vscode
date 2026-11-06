@@ -191,6 +191,9 @@ export function renderProblemHtml(
   <button id="btn-cloudtest" title="在 OJ 服务器上用样例运行当前代码（在线调试，每例约需 5 秒）">☁ 云端样例测试</button>
   <button id="btn-submit" ${canSubmit ? '' : 'disabled title="当前文件语言被本题禁止，无法提交"'}>☁ 提交代码</button>
   <button class="secondary" id="btn-lastac" title="获取你最近一次通过的代码并覆盖当前文件">⤓ 最近AC代码</button>
+  <button class="secondary" id="btn-mysub" title="在新标签页查看我的提交">我的提交</button>
+  <button class="secondary" id="btn-allsub" title="在新标签页查看全部提交">全部提交</button>
+  <button class="secondary" id="btn-mytest" title="在新标签页查看本次会话的自测记录">我的自测</button>
   <button class="secondary" id="btn-browser">在浏览器打开</button>
   <button class="secondary" id="btn-refresh">刷新题面</button>
 </div>
@@ -239,6 +242,9 @@ ${bodyHtml}
   $('btn-cloudcustom').addEventListener('click', () => vscode.postMessage({ type: 'cloudTestCustom', input: $('customInput').value }));
   $('btn-submit').addEventListener('click', () => vscode.postMessage({ type: 'submit' }));
   $('btn-lastac').addEventListener('click', () => vscode.postMessage({ type: 'loadAc' }));
+  $('btn-mysub').addEventListener('click', () => vscode.postMessage({ type: 'openRecords', tab: 'my' }));
+  $('btn-allsub').addEventListener('click', () => vscode.postMessage({ type: 'openRecords', tab: 'all' }));
+  $('btn-mytest').addEventListener('click', () => vscode.postMessage({ type: 'openRecords', tab: 'test' }));
   $('btn-browser').addEventListener('click', () => vscode.postMessage({ type: 'openInBrowser' }));
   $('btn-refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
   document.querySelectorAll('[data-copy-sample]').forEach((b) => {
