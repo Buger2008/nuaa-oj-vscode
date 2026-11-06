@@ -346,12 +346,10 @@ export class NuaaOjService implements ProblemPanelHost {
   /** After password change: prompt re-login, log out, and open the login view. */
   passwordChanged(): void {
     void (async () => {
-      const choice = await vscode.window.showInformationMessage('密码修改成功，请重新登录。', { modal: true }, '重新登录');
+      await vscode.window.showInformationMessage('密码修改成功，请重新登录。', { modal: true }, '重新登录');
       await this.auth.logout();
       this.onDataChanged();
-      if (choice === '重新登录') {
-        void vscode.commands.executeCommand('nuaaOj.login');
-      }
+      void vscode.commands.executeCommand('nuaaOj.login');
     })();
   }
 

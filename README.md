@@ -34,7 +34,7 @@ cd nuaa-oj-vscode
 npm install
 npm run compile
 npx vsce package --no-dependencies --allow-missing-repository
-code --install-extension nuaa-oj-1.3.1.vsix
+code --install-extension nuaa-oj-1.3.2.vsix
 ```
 
 也可以用 F5 调试：用 VS Code 打开本文件夹，按 `F5` 启动扩展开发宿主窗口。
@@ -123,6 +123,7 @@ nuaa-oj-vscode/
 - 独立、可打包的扩展，参考了 cph-ng 的「题目 + 测试点 + 面板」思路，但针对 HOJ 的 HTTP API 重新实现，不依赖浏览器插件。
 - 比赛（contest）题目暂未直接支持（需要先注册比赛、且比赛提交规则不同），会提示在浏览器打开。
 - 本扩展仅用于辅助个人学习，请遵守学校 OJ 的使用规定。
+
 
 
 
