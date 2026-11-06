@@ -221,6 +221,7 @@ export class NuaaOjService implements ProblemPanelHost {
   async getContext(ctx: ProblemContext): Promise<any> {
     const u = this.assistantUser();
     if (!u) return null;
+    if (!ctx.displayId) return null;
     return this.auth.api.assistantContext(u, ctx.displayId);
   }
 
@@ -245,16 +246,28 @@ export class NuaaOjService implements ProblemPanelHost {
   ): Promise<void> {
     const u = this.assistantUser();
     if (!u) throw new OjError('请先登录。');
-    return this.auth.api.assistantAskStream(
-      u,
-      { question, session_id: sessionId || '', problem_id: ctx.displayId, activity_type: '', activity_id: '', group_id: '', require_guided: true, action: 'ask' },
-      onEvent,
-      signal,
-    );
+    const payload: any = { question, session_id: sessionId || '', action: 'ask', activity_type: '', activity_id: '', group_id: '' };
+    if (ctx.displayId) {
+      payload.problem_id = ctx.displayId;
+      payload.require_guided = true;
+    } else {
+      payload.require_guided = false;
+    }
+    return this.auth.api.assistantAskStream(u, payload, onEvent, signal);
   }
 
   async openAssistant(ctx: ProblemContext): Promise<void> {
     if (!(await this.auth.ensureLoggedIn())) return;
+    await AssistantPanel.show(ctx, this, this.extensionUri);
+  }
+
+  /** General assistant (no problem context) — reuses AssistantPanel; keeps session history. */
+  async openAssistantGeneral(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    const ctx: any = {
+      kind: 'general', displayId: '', title: '', tid: 0, timeLimit: 1000, memoryLimit: 256,
+      isFileIO: false, samples: [], allowedLanguages: [], url: '',
+    };
     await AssistantPanel.show(ctx, this, this.extensionUri);
   }
 

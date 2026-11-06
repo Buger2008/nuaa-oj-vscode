@@ -287,8 +287,8 @@ export class AssistantPanel {
  document.getElementById('btn-hist').addEventListener('click',function(){ sessionsEl.classList.toggle('show'); if(sessionsEl.classList.contains('show')) vscode.postMessage({type:'listSessions'}); });
 
  window.addEventListener('message',function(e){ const m=e.data;
-   if(m.type==='init'){ state.problemId=m.ctx.problemId; document.getElementById('title').textContent='AI 助手 · '+m.ctx.problemId+' '+(m.ctx.title||''); }
-   else if(m.type==='context'){ if(m.error){ ctxbar.textContent='上下文加载失败：'+m.error; } else { let s='题目已载入'; if(m.latest){ s+=' · 最近提交 #'+m.latest.submit_id+' '+(m.latest.status_name||''); } else if(!m.latestAvailable){ s+=' · 暂无提交记录'; } ctxbar.textContent=s; } }
+   if(m.type==='init'){ state.problemId=m.ctx.problemId; document.getElementById('title').textContent = m.ctx.problemId ? ('AI 助手 · '+m.ctx.problemId+' '+(m.ctx.title||'')) : 'AI 助手（通用）'; }
+   else if(m.type==='context'){ if(!state.problemId){ ctxbar.textContent='通用 AI 助手 · 可直接提问任何编程问题'; } else if(m.error){ ctxbar.textContent='上下文加载失败：'+m.error; } else { let s='题目已载入'; if(m.latest){ s+=' · 最近提交 #'+m.latest.submit_id+' '+(m.latest.status_name||''); } else if(!m.latestAvailable){ s+=' · 暂无提交记录'; } ctxbar.textContent=s; } }
    else if(m.type==='messages'){ state.messages=(m.messages||[]).map(function(x){ return {role:x.role, text:x.text, shown:(x.text||'').length, final:true}; }); state.streaming=false; if(m.sessionId) state.sessionId=m.sessionId; renderMsgs(); }
    else if(m.type==='assistantStart'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(!last||last.role!=='assistant'||last.final){ state.messages.push({role:'assistant',text:'',shown:0,final:false}); } renderMsgs(); }
    else if(m.type==='chunk'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'){ last.text+=m.text; } renderMsgs(); }

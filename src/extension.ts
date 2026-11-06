@@ -304,6 +304,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await service.openAssistant(ctx);
   });
 
+  reg('nuaaOj.openAssistantGeneral', async () => {
+    await service.openAssistantGeneral();
+  });
+
   reg('nuaaOj.loadLastAcceptedCode', async () => {    const ctx = currentProvider.current || (await service.contextFromActiveEditor());
     if (!ctx) {
       vscode.window.showInformationMessage('请先打开一个题目。');

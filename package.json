@@ -2,7 +2,7 @@
   "name": "nuaa-oj",
   "displayName": "NUAA OJ",
   "description": "在 VS Code 中直接登录、查找、编写、测试并提交 NUAA OJ（HOJ）题目，无需浏览器。",
-  "version": "1.7.5",
+  "version": "1.8.0",
   "publisher": "buger",
   "license": "MIT",
   "engines": {
@@ -73,6 +73,11 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "nuaaOj.openAssistantGeneral",
+        "title": "NUAA OJ: 打开 AI 助手（通用）",
+        "icon": "$(comment-discussion)"
+      },
+      {
         "command": "nuaaOj.openInBrowser",
         "title": "NUAA OJ: 在浏览器中打开当前题目",
         "icon": "$(link-external)"
@@ -137,6 +142,11 @@
           "command": "nuaaOj.refreshProblems",
           "when": "view == nuaaOjHome",
           "group": "navigation@3"
+        },
+        {
+          "command": "nuaaOj.openAssistantGeneral",
+          "when": "view == nuaaOjHome",
+          "group": "navigation@4"
         }
       ],
       "editor/title": [
@@ -315,6 +325,7 @@
     "typescript": "^5.5.4"
   }
 }
+
 
 
 
