@@ -157,6 +157,9 @@ export function renderProblemHtml(
   .banner.warn { background: rgba(230,162,60,.15); border: 1px solid rgba(230,162,60,.6); }
   .banner.danger { background: rgba(245,108,108,.15); border: 1px solid rgba(245,108,108,.7); }
   button:disabled { opacity: .5; cursor: not-allowed; }
+  #customInput { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; font-family: var(--vscode-editor-font-family, monospace);
+         font-size: 12.5px; padding: 8px 10px; border-radius: 5px; background: var(--vscode-input-background);
+         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
   code { background: var(--vscode-textCodeBlock-background, rgba(127,127,127,.15)); padding: 1px 5px; border-radius: 3px; }
   #results { margin-top: 26px; }
   .pill { display: inline-block; padding: 1px 9px; border-radius: 10px; font-weight: 700; font-size: 12px; color: #fff; }
@@ -199,6 +202,13 @@ ${bodyHtml}
   ${samplesHtml}
 </section>
 
+<section class="md">
+  <h3>云端自定义测试</h3>
+  <p class="muted" style="margin:0 0 6px">输入你自己的测试数据（≤1000 字符），点下面按钮在 OJ 服务器上运行当前代码。</p>
+  <textarea id="customInput" placeholder="在此输入自定义输入数据…"></textarea>
+  <div style="margin-top:8px"><button id="btn-cloudcustom">☁ 云端运行自定义输入</button></div>
+</section>
+
 <div id="results">
   <div class="muted">点击上方按钮在此查看测试 / 评测结果。</div>
 </div>
@@ -226,6 +236,7 @@ ${bodyHtml}
 
   $('btn-test').addEventListener('click', () => vscode.postMessage({ type: 'test' }));
   $('btn-cloudtest').addEventListener('click', () => vscode.postMessage({ type: 'cloudTest' }));
+  $('btn-cloudcustom').addEventListener('click', () => vscode.postMessage({ type: 'cloudTestCustom', input: $('customInput').value }));
   $('btn-submit').addEventListener('click', () => vscode.postMessage({ type: 'submit' }));
   $('btn-lastac').addEventListener('click', () => vscode.postMessage({ type: 'loadAc' }));
   $('btn-browser').addEventListener('click', () => vscode.postMessage({ type: 'openInBrowser' }));
@@ -237,7 +248,7 @@ ${bodyHtml}
   if (langSel) langSel.addEventListener('change', () => vscode.postMessage({ type: 'changeLanguage', language: langSel.value }));
 
   function pill(status) {
-    const map = { AC:'#67c23a', WA:'#f56c6c', RE:'#f56c6c', TLE:'#f56c6c', CE:'#e6a23c' };
+    const map = { AC:'#67c23a', WA:'#f56c6c', RE:'#f56c6c', TLE:'#f56c6c', CE:'#e6a23c', OK:'#409eff' };
     return '<span class="pill" style="background:' + (map[status]||'#9e9e9e') + '">' + status + '</span>';
   }
   function pre(s) { return '<pre class="io">' + escapeHtml(s || '') + '</pre>'; }
@@ -257,13 +268,18 @@ ${bodyHtml}
       html += '<div class="summary" style="border-color:#e6a23c"><b>编译错误：</b></div>' + pre(r.compileError);
       $('results').innerHTML = html; return;
     }
-    const passed = r.cases.filter(c=>c.status==='AC').length;
-    html += '<div class="summary big">' + (r.ok ? '✅ 全部通过 ' : '❌ ') + passed + ' / ' + r.cases.length +
-            ' 通过 · 总耗时 ' + r.totalTimeMs + ' ms</div>';
+    const hasOk = r.cases.some((c) => c.status === 'OK');
+    const passed = r.cases.filter((c) => c.status === 'AC' || c.status === 'OK').length;
+    html += '<div class="summary big">' + (hasOk ? '☁ 运行完成 ' : r.ok ? '✅ 全部通过 ' : '❌ ') + passed + ' / ' + r.cases.length +
+            (hasOk ? ' 用例' : ' 通过') + ' · 总耗时 ' + r.totalTimeMs + ' ms</div>';
     for (const c of r.cases) {
+      const okDone = c.status === 'AC' || c.status === 'OK';
       html += '<div class="case"><div class="case-head">' + pill(c.status) +
-              ' <b>样例 ' + c.index + '</b> <span class="muted">' + c.timeMs + ' ms</span></div>';
-      if (c.status !== 'AC') {
+              ' <b>' + (hasOk ? '输入' : '样例') + ' ' + c.index + '</b> <span class="muted">' + c.timeMs + ' ms</span></div>';
+      if (c.status === 'OK') {
+        html += '<div class="block-label" style="margin-top:6px">输入</div>' + pre(c.input) +
+                '<div class="block-label" style="margin-top:6px">输出</div>' + pre(c.actual);
+      } else if (!okDone) {
         html += '<div class="diff"><div><div class="block-label">期望输出</div>' + pre(c.expected) +
                 '</div><div><div class="block-label">实际输出</div>' + pre(c.actual) + '</div></div>';
         if (c.stderr) html += '<div class="block-label" style="margin-top:6px">stderr</div>' + pre(c.stderr);

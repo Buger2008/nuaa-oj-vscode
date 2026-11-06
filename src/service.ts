@@ -433,11 +433,11 @@ export class NuaaOjService implements ProblemPanelHost {
   }
 
   /**
-   * Cloud sample test: run the current code against the problem's samples on the OJ (online debug).
-   * The server rate-limits online debugging (~5s between submissions), so samples are submitted
-   * sequentially with the configured interval, retrying automatically on 403 "too frequent".
+   * Cloud sample test: run the current code on the OJ (online debug).
+   * - Without `customInput`: runs all problem samples sequentially (rate-limited ~5s each, auto-retry).
+   * - With `customInput`: runs only that custom input (single case, no expected output check).
    */
-  async runCloudTest(ctx: ProblemContext, onProgress?: (text: string) => void): Promise<RunResult> {
+  async runCloudTest(ctx: ProblemContext, onProgress?: (text: string) => void, customInput?: string): Promise<RunResult> {
     const fileUri = await this.getSolutionUri(ctx);
     if (!fileUri) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '未找到对应的代码文件。' };
     await this.saveDocument(fileUri);
@@ -447,7 +447,11 @@ export class NuaaOjService implements ProblemPanelHost {
     const fileLang = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase());
     const language = submissionLanguage(ctx, fileUri.fsPath) || ctx.language || fileLang || '';
     if (!language) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '无法判断语言。' };
-    const samples = ctx.samples || [];
+    const isCustom = customInput !== undefined;
+    if (isCustom && !String(customInput).trim()) {
+      return { ok: false, language, cases: [], totalTimeMs: 0, skipped: '请输入自定义输入数据。' };
+    }
+    const samples = isCustom ? [{ input: String(customInput), output: '' }] : ctx.samples || [];
     if (!samples.length) return { ok: false, language, cases: [], totalTimeMs: 0, skipped: '该题没有公开样例，无法云端样例测试。' };
 
     const interval = Math.max(0, vscode.workspace.getConfiguration('nuaaOj').get<number>('cloudTest.intervalMs', 5500));
@@ -546,17 +550,21 @@ export class NuaaOjService implements ProblemPanelHost {
         4: 'RE',
         8: 'WA',
       };
+      let caseStatus: CaseStatus = map[st] || 'RE';
+      // For custom input there is no expected output, so a normal run's verdict (AC/WA/PE/PA)
+      // just means "ran successfully" — label it OK rather than a misleading WA.
+      if (isCustom && [0, -1, -3, 8].includes(st)) caseStatus = 'OK';
       cases.push({
         index: i + 1,
         input: s.input,
         expected: s.output,
         actual: vo.userOutput ?? '',
         stderr: vo.stderr || '',
-        status: map[st] || 'RE',
+        status: caseStatus,
         timeMs: Number(vo.time) || 0,
       });
     }
-    return { ok: cases.every((c) => c.status === 'AC'), language, cases, totalTimeMs: Date.now() - start, cloud: true };
+    return { ok: cases.every((c) => c.status === 'AC' || c.status === 'OK'), language, cases, totalTimeMs: Date.now() - start, cloud: true };
   }
 
   async submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any> {

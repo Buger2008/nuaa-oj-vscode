@@ -7,7 +7,7 @@ import { InitialState, renderProblemHtml } from './statement';
 
 export interface ProblemPanelHost {
   runTest(ctx: ProblemContext): Promise<RunResult>;
-  runCloudTest(ctx: ProblemContext, onProgress?: (text: string) => void): Promise<RunResult>;
+  runCloudTest(ctx: ProblemContext, onProgress?: (text: string) => void, customInput?: string): Promise<RunResult>;
   submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any>;
   changeLanguage(ctx: ProblemContext, language: string): Promise<{ ok: boolean; fileName?: string; language?: string; message?: string }>;
   loadLastAcceptedCode(ctx: ProblemContext): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean; fileName?: string; language?: string; switched?: boolean }>;
@@ -173,6 +173,11 @@ export class ProblemPanel {
         }
         case 'cloudTest': {
           const res = await this.host.runCloudTest(this.ctx, (t) => this.postStatus(t));
+          this.postTestResult(res);
+          break;
+        }
+        case 'cloudTestCustom': {
+          const res = await this.host.runCloudTest(this.ctx, (t) => this.postStatus(t), String(m.input ?? ''));
           this.postTestResult(res);
           break;
         }

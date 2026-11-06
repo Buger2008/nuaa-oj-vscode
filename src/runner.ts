@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Sample } from './samples';
 
-export type CaseStatus = 'AC' | 'WA' | 'RE' | 'TLE' | 'CE';
+export type CaseStatus = 'AC' | 'WA' | 'RE' | 'TLE' | 'CE' | 'OK';
 
 export interface CaseResult {
   index: number;
