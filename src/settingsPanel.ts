@@ -8,6 +8,7 @@ export interface SettingsHost {
   sendEmailCode(email: string): Promise<any>;
   changeEmail(password: string, newEmail: string, code: string): Promise<any>;
   uploadAvatar(dataUrl: string): Promise<any>;
+  openExtensionSettings(): void;
 }
 
 export class SettingsPanel {
@@ -63,6 +64,8 @@ export class SettingsPanel {
           const url = await this.host.uploadAvatar(String(m.dataUrl || ''));
           this.post({ type: 'avatar', url });
           ok('头像已更新。');
+        } else if (m?.type === 'openExtensionSettings') {
+          this.host.openExtensionSettings();
         }
       } catch (e: any) {
         fail(e);
@@ -98,6 +101,10 @@ export class SettingsPanel {
  .hint{color:var(--vscode-descriptionForeground);font-size:11.5px;margin:4px 0 0 142px;}
 </style></head><body>
 <h1>设置</h1>
+<div class="row" style="margin:6px 0 4px">
+  <button class="btn sec" id="btnOpenSettings">⚙ 打开插件设置</button>
+  <span class="muted">选项卡开关、编译器、测试参数等都在这里</span>
+</div>
 <div class="notice" id="notice"></div>
 
 <h2>资料设置</h2>
@@ -168,6 +175,7 @@ export class SettingsPanel {
  });
  $('btnEmail').addEventListener('click',function(){ vscode.postMessage({type:'changeEmail', password:$('emailPassword').value, email:$('newEmail').value.trim(), code:$('code').value.trim()}); });
  $('avatarFile').addEventListener('change',function(e){ var file=e.target.files&&e.target.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(){ vscode.postMessage({type:'uploadAvatar', dataUrl:r.result}); }; r.readAsDataURL(file); });
+ $('btnOpenSettings').addEventListener('click',function(){ vscode.postMessage({type:'openExtensionSettings'}); });
  window.addEventListener('message',function(e){ var m=e.data;
    if(m.type==='info'){ fill(m.info); }
    else if(m.type==='avatar'){ if(m.url) $('avatar').src=m.url; }

@@ -396,6 +396,10 @@ export class NuaaOjService implements ProblemPanelHost {
     await SettingsPanel.show(this, this.extensionUri);
   }
 
+  openExtensionSettings(): void {
+    void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:buger.nuaa-oj');
+  }
+
   // ---- User home ------------------------------------------------------------
   async info(uid: string, username: string): Promise<any> {
     const v = await this.auth.api.getUserHomeInfo(uid, username);
