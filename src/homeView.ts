@@ -457,7 +457,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .pg:disabled{opacity:.4;cursor:default;}
  .pgdots{padding:0 2px;color:var(--vscode-descriptionForeground);}
  .rchart{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px 10px;margin-bottom:8px;}
- .rtip{position:fixed;z-index:99999;display:none;padding:4px 8px;border-radius:4px;font-size:12px;pointer-events:none;white-space:nowrap;background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#fff);border:1px solid var(--vscode-panel-border);box-shadow:0 2px 8px rgba(0,0,0,.4);}
+ .rtip{position:fixed;z-index:99999;display:none;padding:4px 8px;border-radius:4px;font-size:12px;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis;background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#fff);border:1px solid var(--vscode-panel-border);box-shadow:0 2px 8px rgba(0,0,0,.4);}
  .rlegend{font-size:11px;color:var(--vscode-descriptionForeground);margin-top:2px;}
  .rrow{display:flex;gap:6px;align-items:center;margin:3px 0;font-size:11.5px;}
  .rname{width:68px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--vscode-descriptionForeground);}
@@ -484,7 +484,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  const el = (tag, cls, txt) => { const e=document.createElement(tag); if(cls) e.className=cls; if(txt!==undefined) e.textContent=txt; return e; };
  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
  const rtip=document.createElement('div'); rtip.className='rtip'; document.body.appendChild(rtip);
- function attachTips(root){ if(!root||!root.querySelectorAll) return; root.querySelectorAll('[data-tip]').forEach(function(el){ el.addEventListener('mousemove',function(e){ rtip.textContent=el.getAttribute('data-tip'); rtip.style.display='block'; rtip.style.left=(e.clientX+12)+'px'; rtip.style.top=(e.clientY+12)+'px'; }); el.addEventListener('mouseleave',function(){ rtip.style.display='none'; }); }); }
+ function attachTips(root){ if(!root||!root.querySelectorAll) return; root.querySelectorAll('[data-tip]').forEach(function(el){ el.addEventListener('mousemove',function(e){ rtip.textContent=el.getAttribute('data-tip'); rtip.style.display='block'; var w=rtip.offsetWidth||0, h=rtip.offsetHeight||0; var vw=(window&&window.innerWidth)||(document.documentElement&&document.documentElement.clientWidth)||9999; var vh=(window&&window.innerHeight)||(document.documentElement&&document.documentElement.clientHeight)||9999; var x=e.clientX+12; if(x+w>vw-6) x=e.clientX-w-12; if(x<4) x=4; var y=e.clientY+12; if(y+h>vh-6) y=e.clientY-h-12; if(y<4) y=4; rtip.style.left=x+'px'; rtip.style.top=y+'px'; }); el.addEventListener('mouseleave',function(){ rtip.style.display='none'; }); }); }
 
  document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); setActive(); vscode.postMessage({type:'tab', tab:activeTab}); }));
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
