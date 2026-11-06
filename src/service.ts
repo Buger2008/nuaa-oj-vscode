@@ -6,6 +6,7 @@ import { RecordsPanel } from './recordsPanel';
 import { AssistantPanel } from './assistantPanel';
 import { ProfilePanel } from './profilePanel';
 import { SettingsPanel } from './settingsPanel';
+import { UserHomePanel } from './userHomePanel';
 import {
   ProblemContext,
   buildContext,
@@ -379,6 +380,25 @@ export class NuaaOjService implements ProblemPanelHost {
   async openSettings(): Promise<void> {
     if (!(await this.auth.ensureLoggedIn())) return;
     await SettingsPanel.show(this, this.extensionUri);
+  }
+
+  // ---- User home ------------------------------------------------------------
+  async info(uid: string, username: string): Promise<any> {
+    return this.auth.api.getUserHomeInfo(uid, username);
+  }
+
+  async heatmap(uid: string, username: string): Promise<any> {
+    return this.auth.api.getUserCalendarHeatmap(uid, username);
+  }
+
+  async submissions(username: string, page: number, size: number): Promise<{ records: any[]; total: number }> {
+    const r = await this.auth.api.getSubmissionList({ limit: size, currentPage: page, username, onlyMine: false });
+    return { records: r.records || [], total: r.total || 0 };
+  }
+
+  async openUserHome(uid: string, username: string): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await UserHomePanel.show(this, this.extensionUri, uid, username);
   }
 
   private base(): string {

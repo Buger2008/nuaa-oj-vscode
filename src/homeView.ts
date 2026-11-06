@@ -10,6 +10,7 @@ export interface HomeCallbacks {
   openUrl: (url: string) => void;
   openProfile: () => void;
   openSettings: () => void;
+  openUser: (uid: string, username: string) => void;
   onChange?: () => void;
 }
 
@@ -122,6 +123,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'openSettings':
         this.cb.openSettings();
         break;
+      case 'openUser':
+        this.cb.openUser(String(m.uid || ''), String(m.username || ''));
+        break;
       case 'openProblem':
         await this.cb.openProblem(String(m.value));
         break;
@@ -174,6 +178,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const offset = size * (page - 1);
       const items = (res.records || []).map((r: any, i: number) => ({
         rank: offset + i + 1,
+        uid: r.uid,
         username: r.username,
         nickname: r.nickname,
         signature: r.signature,
@@ -544,7 +549,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    items.forEach(function(r){
      const tr=document.createElement('tr');
      tr.appendChild(el('td','',String(r.rank)));
-     const tdu=el('td'); tdu.appendChild(document.createTextNode(r.username||'')); if(r.titleName){ const tg=el('span','pill',r.titleName); tg.style.background=r.titleColor||'#409eff'; tg.style.marginLeft='4px'; tdu.appendChild(tg); } tr.appendChild(tdu);
+     const tdu=el('td'); const ua=el('a','runid', r.username||''); ua.href='#'; ua.title='打开个人主页'; ua.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUser', uid:r.uid, username:r.username}); }); tdu.appendChild(ua); if(r.titleName){ const tg=el('span','pill',r.titleName); tg.style.background=r.titleColor||'#409eff'; tg.style.marginLeft='4px'; tdu.appendChild(tg); } tr.appendChild(tdu);
      tr.appendChild(el('td','',r.nickname||''));
      if(f.kind!=='acm') tr.appendChild(el('td','',String(r.score!=null?r.score:'-')));
      tr.appendChild(el('td','',(r.ac||0)+'/'+(r.total||0)));

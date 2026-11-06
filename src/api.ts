@@ -471,6 +471,14 @@ export class OjApi {
   async getUserRank(params: { limit?: number; currentPage?: number; type: number; searchUser?: string }): Promise<Paged<any>> {
     return this.request('/api/get-rank-list', { query: params });
   }
+
+  async getUserHomeInfo(uid: string, username: string): Promise<any> {
+    return this.request('/api/get-user-home-info', { query: { uid, username } });
+  }
+
+  async getUserCalendarHeatmap(uid: string, username: string): Promise<any> {
+    return this.request('/api/get-user-calendar-heatmap', { query: { uid, username } });
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }
