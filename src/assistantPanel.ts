@@ -57,6 +57,10 @@ export class AssistantPanel {
     private host: AssistantHost,
     private extensionUri: vscode.Uri,
   ) {
+    this.panel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'resources')],
+    };
     this.panel.webview.html = this.html();
     this.panel.webview.onDidReceiveMessage(async (m) => {
       try {
@@ -140,7 +144,6 @@ export class AssistantPanel {
     this.messages.push({ role: 'user', text: q });
     this.messages.push({ role: 'assistant', text: '' });
     this.streaming = true;
-    this.post({ type: 'messages', messages: this.messages });
     this.post({ type: 'assistantStart' });
     this.controller = new AbortController();
     try {
@@ -171,8 +174,12 @@ export class AssistantPanel {
 
   private html(): string {
     const nonce = Array.from({ length: 24 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
+    const mdUri = this.panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'vendor', 'markdown-it.min.js'))
+      .toString();
+    const csp = this.panel.webview.cspSource;
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' ${csp};" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <style>
  body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background);margin:0;height:100vh;display:flex;flex-direction:column;}
@@ -193,6 +200,14 @@ export class AssistantPanel {
  .msg.user{align-self:flex-end;background:var(--vscode-button-background);color:var(--vscode-button-foreground);}
  .msg.assistant{align-self:flex-start;background:rgba(127,127,127,.16);}
  .msg.assistant.streaming::after{content:'▋';opacity:.6;margin-left:2px;}
+ .msg.md{white-space:normal;}
+ .msg.md p{margin:6px 0;} .msg.md p:first-child{margin-top:0;} .msg.md p:last-child{margin-bottom:0;}
+ .msg.md code{font-family:var(--vscode-editor-font-family,monospace);background:rgba(127,127,127,.25);padding:1px 4px;border-radius:3px;font-size:12px;}
+ .msg.md pre{background:var(--vscode-textCodeBlock-background,rgba(127,127,127,.25));padding:8px 10px;border-radius:6px;overflow:auto;margin:6px 0;}
+ .msg.md pre code{background:none;padding:0;}
+ .msg.md ul,.msg.md ol{margin:6px 0;padding-left:20px;}
+ .msg.md h1,.msg.md h2,.msg.md h3{font-size:13.5px;margin:8px 0 4px;}
+ .msg.md a{color:var(--vscode-textLink-foreground);}
  .composer{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--vscode-panel-border);}
  textarea{flex:1;resize:none;height:60px;font-family:inherit;font-size:13px;padding:8px;border-radius:6px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));background:var(--vscode-input-background);color:var(--vscode-input-foreground);}
  .hint{font-size:11px;color:var(--vscode-descriptionForeground);padding:0 12px 6px;}
@@ -210,24 +225,41 @@ export class AssistantPanel {
  <textarea id="input" placeholder="向 AI 助教提问，例如：这道题该怎么入手？"></textarea>
  <button class="primary" id="btn-send">发送</button>
 </div>
+<script nonce="${nonce}" src="${mdUri}"></script>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
  const msgsEl = document.getElementById('msgs');
  const sessionsEl = document.getElementById('sessions');
  const ctxbar = document.getElementById('ctxbar');
  let state = { messages: [], streaming: false, sessionId: '', problemId: '' };
+ const md = (window.markdownit ? window.markdownit({breaks:true, linkify:true}) : null);
 
+ function renderMsg(m){
+   const d=document.createElement('div');
+   d.className='msg '+m.role;
+   if(state.streaming && m.role==='assistant' && !m.final) d.classList.add('streaming');
+   if(m.role==='assistant' && m.final && md){ d.classList.add('md'); d.innerHTML=md.render(m.text||''); }
+   else if(m.role==='assistant'){ d.textContent=(m.text||'').slice(0, m.shown||0); }
+   else { d.textContent=m.text||''; }
+   return d;
+ }
  function renderMsgs(){
    msgsEl.innerHTML='';
-   state.messages.forEach(function(m, idx){
-     const d=document.createElement('div');
-     d.className='msg '+m.role;
-     if(state.streaming && idx===state.messages.length-1 && m.role==='assistant') d.classList.add('streaming');
-     d.textContent=m.text;
-     msgsEl.appendChild(d);
-   });
+   state.messages.forEach(function(m){ msgsEl.appendChild(renderMsg(m)); });
    msgsEl.scrollTop = msgsEl.scrollHeight;
  }
+ function tick(){
+   let changed=false;
+   state.messages.forEach(function(m){
+     if(m.role==='assistant' && !m.final){
+       const len=(m.text||'').length;
+       if((m.shown||0)<len){ m.shown=Math.min(len,(m.shown||0)+Math.max(1,Math.ceil((len-(m.shown||0))*0.18))); changed=true; }
+       else if(!state.streaming){ m.final=true; changed=true; }
+     }
+   });
+   if(changed) renderMsgs();
+ }
+ setInterval(tick, 40);
  function renderSessions(list){
    sessionsEl.innerHTML='';
    if(!list || !list.length){ sessionsEl.appendChild(document.createTextNode('暂无历史会话')); return; }
@@ -245,7 +277,7 @@ export class AssistantPanel {
    const q=inp.value.trim(); if(!q || state.streaming) return;
    inp.value='';
    state.messages.push({role:'user',text:q});
-   state.messages.push({role:'assistant',text:''});
+   state.messages.push({role:'assistant',text:'',shown:0,final:false});
    state.streaming=true; renderMsgs();
    vscode.postMessage({type:'ask', question:q});
  }
@@ -257,12 +289,12 @@ export class AssistantPanel {
  window.addEventListener('message',function(e){ const m=e.data;
    if(m.type==='init'){ state.problemId=m.ctx.problemId; document.getElementById('title').textContent='AI 助手 · '+m.ctx.problemId+' '+(m.ctx.title||''); }
    else if(m.type==='context'){ if(m.error){ ctxbar.textContent='上下文加载失败：'+m.error; } else { let s='题目已载入'; if(m.latest){ s+=' · 最近提交 #'+m.latest.submit_id+' '+(m.latest.status_name||''); } else if(!m.latestAvailable){ s+=' · 暂无提交记录'; } ctxbar.textContent=s; } }
-   else if(m.type==='messages'){ state.messages=m.messages||[]; state.streaming=false; if(m.sessionId) state.sessionId=m.sessionId; renderMsgs(); }
-   else if(m.type==='assistantStart'){ state.streaming=true; renderMsgs(); }
+   else if(m.type==='messages'){ state.messages=(m.messages||[]).map(function(x){ return {role:x.role, text:x.text, shown:(x.text||'').length, final:true}; }); state.streaming=false; if(m.sessionId) state.sessionId=m.sessionId; renderMsgs(); }
+   else if(m.type==='assistantStart'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(!last||last.role!=='assistant'||last.final){ state.messages.push({role:'assistant',text:'',shown:0,final:false}); } renderMsgs(); }
    else if(m.type==='chunk'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'){ last.text+=m.text; } renderMsgs(); }
    else if(m.type==='done'){ state.streaming=false; if(m.sessionId) state.sessionId=m.sessionId; renderMsgs(); }
    else if(m.type==='sessions'){ renderSessions(m.list); }
-   else if(m.type==='error'){ state.streaming=false; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'&&!last.text){ last.text='（出错：'+m.text+'）'; } renderMsgs(); }
+   else if(m.type==='error'){ state.streaming=false; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'&&!last.text){ last.text='（出错：'+m.text+'）'; last.shown=last.text.length; last.final=true; } renderMsgs(); }
  });
  vscode.postMessage({type:'ready'});
 </script></body></html>`;
