@@ -8,6 +8,7 @@ import { ProfilePanel } from './profilePanel';
 import { SettingsPanel } from './settingsPanel';
 import { UserHomePanel } from './userHomePanel';
 import { MessagesPanel } from './messagesPanel';
+import { LearningPanel } from './learningPanel';
 import {
   ProblemContext,
   buildContext,
@@ -289,6 +290,22 @@ export class NuaaOjService implements ProblemPanelHost {
   async openProfile(): Promise<void> {
     if (!(await this.auth.ensureLoggedIn())) return;
     await ProfilePanel.show(this, this.extensionUri);
+  }
+
+  // ---- Learning path (学径) -------------------------------------------------
+  async data(): Promise<any> {
+    const u = this.assistantUser();
+    if (!u) throw new OjError('请先登录。');
+    const [overview, topic] = await Promise.all([
+      this.auth.api.getLearningOverview(u),
+      this.auth.api.getCourseCurrentTopic().catch(() => null),
+    ]);
+    return { overview, topic };
+  }
+
+  async openLearning(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await LearningPanel.show(this, this.extensionUri);
   }
 
   // ---- Settings: profile / account -----------------------------------------

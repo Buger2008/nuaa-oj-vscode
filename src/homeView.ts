@@ -12,6 +12,7 @@ export interface HomeCallbacks {
   openSettings: () => void;
   openMessages: () => void;
   openMyHome: () => void;
+  openLearning: () => void;
   openUser: (uid: string, username: string) => void;
   onChange?: () => void;
 }
@@ -154,6 +155,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'openMyHome':
         this.cb.openMyHome();
+        break;
+      case 'openLearning':
+        this.cb.openLearning();
         break;
       case 'openUser':
         this.cb.openUser(String(m.uid || ''), String(m.username || ''));
@@ -693,7 +697,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    function row(icon, label, fn){ const r=el('div','mrow'); r.appendChild(el('span','micon',icon)); r.appendChild(el('span','mlabel',label)); r.appendChild(el('span','mchev','›')); r.addEventListener('click',fn); menu.appendChild(r); }
    row('👤', '我的主页', function(){ vscode.postMessage({type:'openMyHome'}); });
    row('📥', '我的提交', function(){ openMySubs(); });
-   row('📊', '能力画像', function(){ vscode.postMessage({type:'openProfile'}); });
+   row('🧭', '学径', function(){ vscode.postMessage({type:'openLearning'}); });
    row('🔔', '系统通知', function(){ vscode.postMessage({type:'openMessages'}); });
    row('⚙️', '设置', function(){ vscode.postMessage({type:'openSettings'}); });
    row('🚪', '退出登录', function(){ vscode.postMessage({type:'logout'}); });

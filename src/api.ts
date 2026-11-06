@@ -503,6 +503,14 @@ export class OjApi {
   async getSelfTests(params: { page?: number; limit?: number; status?: number; scope?: string }): Promise<Paged<any>> {
     return this.request('/recommendation-api/self-tests', { query: params });
   }
+
+  async getLearningOverview(username: string): Promise<any> {
+    return this.request(`/recommendation-api/overview/${encodeURIComponent(username)}`);
+  }
+
+  async getCourseCurrentTopic(): Promise<any> {
+    return this.request('/recommendation-api/course/current-topic');
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }
