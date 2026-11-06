@@ -531,6 +531,8 @@ export class NuaaOjService implements ProblemPanelHost {
       javascript: c.get<string>('compiler.javascript', 'node'),
       go: c.get<string>('compiler.go', 'go'),
       rust: c.get<string>('compiler.rust', 'rustc'),
+      php: c.get<string>('compiler.php', 'php'),
+      ruby: c.get<string>('compiler.ruby', 'ruby'),
       timeLimitExtraMs: c.get<number>('test.timeLimitExtraMs', 1000),
     };
   }

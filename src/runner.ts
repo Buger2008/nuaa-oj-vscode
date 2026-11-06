@@ -37,6 +37,8 @@ export interface RunnerConfig {
   javascript: string;
   go: string;
   rust: string;
+  php: string;
+  ruby: string;
   timeLimitExtraMs: number;
 }
 
@@ -246,14 +248,20 @@ export function buildPlan(
       run: (_src, outDir) => ({ command: path.join(outDir, outName), args: [] }),
     };
   }
+  if (language === 'PHP' || ext === '.php') {
+    return { run: (src) => ({ command: cfg.php, args: ['-d', 'error_reporting=0', src] }) };
+  }
+  if (language === 'Ruby' || ext === '.rb') {
+    return { run: (src) => ({ command: cfg.ruby, args: [src] }) };
+  }
   return { run: (src) => ({ command: '', args: [src] }) };
 }
 
 export function isLocallyRunnable(language: string, sourcePath: string): boolean {
   const ext = path.extname(sourcePath).toLowerCase();
   return (
-    /^(C|C\+\+|Java|Python|PyPy|Golang|JavaScript|Rust)/i.test(language) ||
-    ['.c', '.cpp', '.cc', '.cxx', '.java', '.py', '.go', '.js', '.rs'].includes(ext)
+    /^(C|C\+\+|Java|Python|PyPy|Golang|JavaScript|Rust|PHP|Ruby)/i.test(language) ||
+    ['.c', '.cpp', '.cc', '.cxx', '.java', '.py', '.go', '.js', '.rs', '.php', '.rb'].includes(ext)
   );
 }
 
