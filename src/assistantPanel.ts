@@ -35,7 +35,8 @@ export class AssistantPanel {
       existing.panel.reveal(vscode.ViewColumn.Active, false);
       return;
     }
-    const panel = vscode.window.createWebviewPanel('nuaaOjAssistant', `AI 助手 · ${ctx.displayId}`, vscode.ViewColumn.Active, {
+    const vt = 'nuaaOjAssistant-' + key.replace(/[^A-Za-z0-9_-]/g, '_');
+    const panel = vscode.window.createWebviewPanel(vt, ctx.displayId ? `AI 助手 · ${ctx.displayId}` : 'AI 助手（通用）', vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
     });
