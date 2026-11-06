@@ -499,6 +499,10 @@ export class OjApi {
   async getUnreadMsgCount(): Promise<any> {
     return this.request('/api/msg/unread');
   }
+
+  async getSelfTests(params: { page?: number; limit?: number; status?: number; scope?: string }): Promise<Paged<any>> {
+    return this.request('/recommendation-api/self-tests', { query: params });
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }

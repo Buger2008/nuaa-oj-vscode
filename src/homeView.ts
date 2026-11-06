@@ -116,6 +116,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'rank':
         await this.sendRank(m);
         break;
+      case 'selfTests':
+        await this.sendSelfTests(m);
+        break;
       case 'home':
         await this.sendHome();
         break;
@@ -236,6 +239,44 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
   private baseUrl(): string {
     return vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
+  }
+
+  private async sendSelfTests(f: any): Promise<void> {
+    if (!this.view) return;
+    const onlyMine = !!f?.onlyMine;
+    const status = f?.status ?? '';
+    const page = Math.max(1, Number(f?.page) || 1);
+    const size = [15, 30, 50, 100].includes(Number(f?.size)) ? Number(f?.size) : 20;
+    const filters = { onlyMine, status, page, size };
+    if (!(await this.auth.ensureLoggedIn(false))) {
+      this.view.webview.postMessage({ type: 'selfTests', payload: { needLogin: true, items: [], total: 0, page, size, pages: 0 }, filters });
+      return;
+    }
+    try {
+      const res = await this.auth.api.getSelfTests({
+        page,
+        limit: size,
+        scope: onlyMine ? 'mine' : 'all',
+        status: status === '' || status == null ? undefined : Number(status),
+      });
+      const items = (res.records || []).map((r: any) => ({
+        submitId: r.submit_id,
+        displayPid: r.display_pid,
+        title: r.title,
+        status: r.status,
+        statusLabel: r.status_label,
+        time: r.time,
+        memory: r.memory,
+        language: r.language,
+        submitTime: r.submit_time || r.completed_at,
+        username: r.username,
+      }));
+      const total = res.total || 0;
+      const pages = (res as any).pages || Math.max(1, Math.ceil(total / size));
+      this.view.webview.postMessage({ type: 'selfTests', payload: { items, total, page, size, pages }, filters });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'selfTests', payload: { error: e?.message ?? String(e), items: [], total: 0, page, size, pages: 0 }, filters });
+    }
   }
 
   private async sendStatus(f: any): Promise<void> {
@@ -643,6 +684,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  // 我的
  let rankChartType = 'bar';
+ let statusMode = 'formal';
  let lastRankData = null, lastRankFilters = null;
  function rankLegend(kind){ return kind==='acm' ? '<div class="rlegend"><span style="color:#0a84ff">■ AC</span> <span style="color:#909399">■ Total</span></div>' : '<div class="rlegend"><span style="color:#8b5cf6">■ Score</span></div>'; }
  function barSpan(v,max,color){ const w=Math.max(2,Math.round(v/max*100)); return '<div class="rbarwrap"><div class="rbar" style="width:'+w+'%;background:'+color+'"></div><span class="rbarval">'+v+'</span></div>'; }
@@ -738,8 +780,61 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    content.appendChild(pager);
    content.appendChild(el('div','muted','共 '+total+' 人 · 第 '+cur+' / '+pages+' 页'));
  }
+ function statusSubTabs(){
+   const bar=el('div','filters');
+   const bf=el('button','tab'+(statusMode==='formal'?' active':''),'正式提交');
+   const bs=el('button','tab'+(statusMode==='self'?' active':''),'在线自测');
+   bf.addEventListener('click',function(){ if(statusMode==='formal') return; statusMode='formal'; vscode.postMessage({type:'status',onlyMine:false,status:'',page:1,size:30}); });
+   bs.addEventListener('click',function(){ if(statusMode==='self') return; statusMode='self'; vscode.postMessage({type:'selfTests',onlyMine:false,status:'',page:1,size:20}); });
+   bar.appendChild(bf); bar.appendChild(bs); return bar;
+ }
+ function stColor(s){ if(Number(s)===0) return '#67c23a'; if(Number(s)===-1) return '#f56c6c'; if(Number(s)===-2) return '#e6a23c'; if(Number(s)===1) return '#409eff'; if(Number(s)===3) return '#f56c6c'; return '#909399'; }
+ function renderSelfTests(data, filters){
+   content.innerHTML=''; content.appendChild(statusSubTabs());
+   if(statusMode!=='self') return;
+   if(data.needLogin){ needLogin(); return; }
+   const f={ onlyMine:!!(filters&&filters.onlyMine), status:(filters&&filters.status!=null)?String(filters.status):'', page:(data&&data.page)||1, size:(data&&data.size)||20 };
+   function fire(){ vscode.postMessage({type:'selfTests', onlyMine:f.onlyMine, status:f.status, page:f.page, size:f.size}); }
+   const bar=el('div','filters');
+   const sel=document.createElement('select');
+   [['','全部状态'],['0','输出符合预期'],['-1','输出不符'],['-2','编译错误'],['1','超时'],['2','内存超限'],['3','运行错误']].forEach(function(p){ const o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; sel.appendChild(o); });
+   sel.value=f.status; sel.addEventListener('change',function(){ f.status=sel.value; f.page=1; fire(); });
+   const chk=document.createElement('input'); chk.type='checkbox'; chk.checked=f.onlyMine; chk.addEventListener('change',function(){ f.onlyMine=chk.checked; f.page=1; fire(); });
+   const lab=el('label',''); lab.appendChild(chk); lab.appendChild(document.createTextNode('只看我的'));
+   const sizeSel=document.createElement('select'); [15,30,50,100].forEach(function(n){ const o=document.createElement('option'); o.value=String(n); o.textContent=n+'条/页'; sizeSel.appendChild(o); }); sizeSel.value=String(f.size); sizeSel.addEventListener('change',function(){ f.size=Number(sizeSel.value); f.page=1; fire(); });
+   bar.appendChild(sel); bar.appendChild(lab); bar.appendChild(sizeSel); content.appendChild(bar);
+   if(data.error){ error(data.error); return; }
+   const items=data.items||[];
+   if(!items.length){ content.appendChild(el('div','empty','没有匹配的在线自测记录。')); return; }
+   const tbl=document.createElement('table'); const thead=document.createElement('thead'); const hr=document.createElement('tr');
+   ['RUNID','用户','题目','状态','时间','内存','语言','提交时间'].forEach(function(h){ hr.appendChild(el('th','',h)); }); thead.appendChild(hr); tbl.appendChild(thead);
+   const tb=document.createElement('tbody');
+   items.forEach(function(r){ const tr=document.createElement('tr');
+     tr.appendChild(el('td','','#'+r.submitId));
+     tr.appendChild(el('td','',r.username||''));
+     tr.appendChild(el('td','',(r.displayPid||'')+' '+(r.title||'')));
+     const tds=el('td'); const pill=el('span','pill',r.statusLabel||('状态'+r.status)); pill.style.background=stColor(r.status); tds.appendChild(pill); tr.appendChild(tds);
+     tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
+     tr.appendChild(el('td','',(r.memory==null?'-':r.memory)+' KB'));
+     tr.appendChild(el('td','',r.language||''));
+     tr.appendChild(el('td','',r.submitTime||''));
+     tb.appendChild(tr);
+   });
+   tbl.appendChild(tb); content.appendChild(tbl);
+   const total=Number(data.total)||0; const size=Number(data.size)||f.size; const pages=Math.max(1,Number(data.pages)||Math.ceil(total/size)||1); const cur=Math.min(Math.max(1,Number(data.page)||1),pages);
+   function go(p){ f.page=p; fire(); }
+   function mk(l,page,dis,act){ const b=el('button','pg'+(act?' active':''),l); if(dis)b.disabled=true; else b.addEventListener('click',function(){go(page);}); return b; }
+   function pageList(c,t){ const a=[]; if(t<=7){ for(var i=1;i<=t;i++)a.push(i); return a; } a.push(1); var s=Math.max(2,c-1),e=Math.min(t-1,c+1); if(s>2)a.push('...'); for(var j=s;j<=e;j++)a.push(j); if(e<t-1)a.push('...'); if(t>1)a.push(t); return a; }
+   const pager=el('div','pager');
+   pager.appendChild(mk('‹',Math.max(1,cur-1),cur<=1,false));
+   pageList(cur,pages).forEach(function(pg){ if(pg==='...')pager.appendChild(el('span','pgdots','…')); else pager.appendChild(mk(String(pg),Number(pg),false,Number(pg)===cur)); });
+   pager.appendChild(mk('›',Math.min(pages,cur+1),cur>=pages,false));
+   content.appendChild(pager);
+   content.appendChild(el('div','muted','共 '+total+' 条 · 第 '+cur+' / '+pages+' 页'));
+ }
  function renderStatus(data, filters){
-   content.innerHTML='';
+   content.innerHTML=''; content.appendChild(statusSubTabs());
+   if(statusMode!=='formal') return;
    if(data.needLogin){ needLogin(); return; }
    const f={ onlyMine:!!(filters&&filters.onlyMine), status:(filters&&filters.status!=null)?String(filters.status):'', page:(data&&data.page)||1, size:(data&&data.size)||15 };
    function fire(){ vscode.postMessage({type:'status', onlyMine:f.onlyMine, status:f.status, page:f.page, size:f.size}); }
@@ -795,6 +890,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  window.addEventListener('message',(e)=>{ const m=e.data;
    if(m.type==='status'){ renderStatus(m.payload, m.filters); return; }
+   if(m.type==='selfTests'){ renderSelfTests(m.payload, m.filters); return; }
    if(m.type==='rank'){ renderRank(m.payload, m.filters); return; }
    if(m.type==='home'){ renderHome(m.payload); return; }
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
