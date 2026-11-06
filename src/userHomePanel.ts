@@ -6,6 +6,7 @@ export interface UserHomeHost {
   submissions(username: string, page: number, size: number): Promise<{ records: any[]; total: number }>;
   submissionUrl(submitId: number): string;
   openExternal(url: string): void;
+  openProblem(value: string): Promise<any> | void;
 }
 
 function esc(s: any): string {
@@ -45,6 +46,7 @@ export class UserHomePanel {
       if (m?.type === 'ready') await this.loadAll();
       else if (m?.type === 'page') { this.page = Math.max(1, Number(m.page) || 1); await this.loadSubs(); }
       else if (m?.type === 'openUrl') this.host.openExternal(String(m.url));
+      else if (m?.type === 'openProblem') void this.host.openProblem(String(m.value));
     }, null, this.disposables);
   }
 
@@ -98,6 +100,16 @@ export class UserHomePanel {
  .diffrow .dbar{flex:1;height:12px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;}
  .diffrow .dbar i{display:block;height:100%;border-radius:6px;}
  .diffrow .dn{width:36px;text-align:right;font-weight:600;}
+ .diffdet{margin:3px 0;}
+ .diffdet>summary{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;list-style:none;}
+ .diffdet>summary::-webkit-details-marker{display:none;}
+ .diffdet>summary .dl{width:52px;color:var(--vscode-descriptionForeground);}
+ .diffdet>summary .dbar{flex:1;height:12px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;}
+ .diffdet>summary .dbar i{display:block;height:100%;border-radius:6px;}
+ .diffdet>summary .dn{width:36px;text-align:right;font-weight:600;}
+ .plist{display:flex;flex-wrap:wrap;gap:6px;padding:8px 4px 8px 60px;}
+ .plink{font-family:var(--vscode-editor-font-family,monospace);font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.18);color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none;}
+ .plink:hover{background:rgba(10,132,255,.25);}
  .cell{width:14px;height:14px;border-radius:3px;background:rgba(127,127,127,.18);}
  table{border-collapse:collapse;width:100%;font-size:12px;} th,td{border-bottom:1px solid var(--vscode-panel-border);padding:5px 4px;text-align:left;white-space:nowrap;}
  th{position:sticky;top:0;background:inherit;} tr:hover{background:rgba(127,127,127,.12);}
@@ -139,11 +151,10 @@ export class UserHomePanel {
    } else { html+='<p class="muted">'+esc(state.infoError||'加载中…')+'</p>'; }
    if(i && i.solvedGroupByDifficulty){
      const g=i.solvedGroupByDifficulty;
-     const cnt={1:(g['1']||[]).length,2:(g['2']||[]).length,3:(g['3']||[]).length,0:(g['0']||[]).length};
-     const rows=[['简单',cnt[1],'#67c23a'],['中等',cnt[2],'#e6a23c'],['困难',cnt[3],'#f56c6c'],['未分类',cnt[0],'#909399']];
-     const max=Math.max(cnt[1],cnt[2],cnt[3],cnt[0],1);
-     html+='<h2>已解决 · 按难度</h2><div class="diffs">';
-     rows.forEach(function(r){ html+='<div class="diffrow"><span class="dl">'+r[0]+'</span><div class="dbar"><i style="width:'+Math.round(r[1]/max*100)+'%;background:'+r[2]+'"></i></div><span class="dn">'+r[1]+'</span></div>'; });
+     const data=[['简单',g['1']||[],'#67c23a'],['中等',g['2']||[],'#e6a23c'],['困难',g['3']||[],'#f56c6c'],['未分类',g['0']||[],'#909399']];
+     const max=Math.max(data[0][1].length,data[1][1].length,data[2][1].length,data[3][1].length,1);
+     html+='<h2>已解决 · 按难度（点击展开）</h2><div class="diffs">';
+     data.forEach(function(d){ const arr=d[1]; html+='<details class="diffdet"><summary><span class="dl">'+d[0]+'</span><div class="dbar"><i style="width:'+Math.round(arr.length/max*100)+'%;background:'+d[2]+'"></i></div><span class="dn">'+arr.length+'</span></summary><div class="plist">'; if(!arr.length){ html+='<span class="muted">（无）</span>'; } else { arr.forEach(function(p){ html+='<a class="plink" data-pid="'+esc(p.problemId)+'">'+esc(p.problemId)+'</a>'; }); } html+='</div></details>'; });
      html+='</div>';
    }
    if(state.heat && state.heat.dataList){
@@ -166,6 +177,7 @@ export class UserHomePanel {
    root.innerHTML=html;
    root.querySelectorAll('a.runid').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUrl',url:a.getAttribute('data-url')}); }); });
    root.querySelectorAll('a.extlink').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUrl',url:a.getAttribute('data-open')}); }); });
+   root.querySelectorAll('a.plink').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openProblem', value:a.getAttribute('data-pid')}); }); });
    const pv=document.getElementById('prev'); if(pv) pv.addEventListener('click',function(){ vscode.postMessage({type:'page',page:state.subs.page-1}); });
    const nx=document.getElementById('next'); if(nx) nx.addEventListener('click',function(){ vscode.postMessage({type:'page',page:state.subs.page+1}); });
  }
