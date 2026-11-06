@@ -3,7 +3,8 @@ import * as path from 'path';
 import { AuthManager } from './auth';
 import { NuaaOjService } from './service';
 import { ProblemPanel } from './problemPanel';
-import { ProblemsProvider, SubmissionsProvider, CurrentProblemProvider, TrainingProvider, HomeworkProvider } from './tree';
+import { CurrentProblemProvider } from './tree';
+import { HomeViewProvider } from './homeView';
 import { ProblemContext, cleanupTempRoot, extensionToLanguage, isLanguageLocked, pickLanguage } from './context';
 import { ProblemDetail } from './types';
 import { LoginPanel } from './loginPanel';
@@ -18,11 +19,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const auth = new AuthManager(context);
   await auth.restore();
 
-  const problemsProvider = new ProblemsProvider(auth);
-  const submissionsProvider = new SubmissionsProvider(auth);
   const currentProvider = new CurrentProblemProvider();
-  const trainingProvider = new TrainingProvider(auth);
-  const homeworkProvider = new HomeworkProvider(auth);
+  const baseUrl = () => vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
+
+  const setCurrent = (ctx: ProblemContext | undefined) => {
+    currentProvider.setContext(ctx);
+    void vscode.commands.executeCommand('setContext', 'nuaaOj.hasProblem', !!ctx);
+  };
 
   const updateStatusBar = () => {
     if (auth.currentUser) {
@@ -37,39 +40,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     statusBar.show();
   };
 
+  let homeProvider: HomeViewProvider;
   const refreshAll = () => {
     updateStatusBar();
-    void problemsProvider.load();
-    void submissionsProvider.load();
-  };
-  const refreshAfterAuth = () => {
-    updateStatusBar();
-    void problemsProvider.load();
-    void submissionsProvider.load();
-    currentProvider.refresh();
-    void trainingProvider.load();
-    void homeworkProvider.load();
+    homeProvider?.refresh();
   };
 
   const service = new NuaaOjService(auth, output, context, context.extensionUri, refreshAll);
 
+  const refreshAfterAuth = () => {
+    updateStatusBar();
+    homeProvider?.refresh();
+    currentProvider.refresh();
+  };
+
+  homeProvider = new HomeViewProvider(auth, context.extensionUri, {
+    openProblem: async (value: string) => {
+      const v = String(value).includes('training/') ? `${baseUrl()}/${value}` : String(value);
+      const ctx = await service.openProblem(v);
+      if (ctx) {
+        setCurrent(ctx);
+        if (isLanguageLocked(ctx)) {
+          vscode.window.showInformationMessage(`该题仅允许使用 ${ctx.allowedLanguages?.[0]}，已自动锁定。`);
+        }
+      }
+    },
+    openLogin: () => LoginPanel.show(auth, baseUrl(), refreshAfterAuth),
+    logout: async () => {
+      await auth.logout();
+      updateStatusBar();
+      homeProvider.refresh();
+    },
+    onChange: refreshAll,
+  });
+
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('nuaaOjProblems', problemsProvider),
-    vscode.window.registerTreeDataProvider('nuaaOjHomework', homeworkProvider),
-    vscode.window.registerTreeDataProvider('nuaaOjTraining', trainingProvider),
-    vscode.window.registerTreeDataProvider('nuaaOjSubmissions', submissionsProvider),
-    vscode.window.registerTreeDataProvider('nuaaOjCurrent', currentProvider),
+    vscode.window.registerWebviewViewProvider(HomeViewProvider.viewType, homeProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
   );
 
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = 'nuaaOj.login';
   context.subscriptions.push(statusBar);
   updateStatusBar();
-
-  const setCurrent = (ctx: ProblemContext | undefined) => {
-    currentProvider.setContext(ctx);
-    void vscode.commands.executeCommand('setContext', 'nuaaOj.hasProblem', !!ctx);
-  };
 
   const ensurePanel = async (ctx: ProblemContext): Promise<ProblemPanel> => {
     const detail = await service.fetchDetailFor(ctx);
@@ -106,14 +120,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ---- Login / logout -------------------------------------------------------
   reg('nuaaOj.login', () => {
-    LoginPanel.show(auth, vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn'), refreshAfterAuth);
+    LoginPanel.show(auth, baseUrl(), refreshAfterAuth);
   });
 
   reg('nuaaOj.logout', async () => {
     await auth.logout();
     updateStatusBar();
-    problemsProvider.refresh();
-    submissionsProvider.refresh();
+    homeProvider.refresh();
     currentProvider.refresh();
     vscode.window.showInformationMessage('已退出 NUAA OJ。');
   });
@@ -151,30 +164,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ---- Search / browse ------------------------------------------------------
   reg('nuaaOj.searchProblems', async () => {
-    const kw = await vscode.window.showInputBox({
-      title: '搜索题目',
-      prompt: '输入题号或标题关键词（留空显示最近题目）',
-      ignoreFocusOut: true,
-    });
-    if (kw === undefined) return;
-    await problemsProvider.load(kw.trim());
-    await vscode.commands.executeCommand('nuaaOjProblems.focus');
+    homeProvider.focusSearch();
   });
 
   reg('nuaaOj.refreshProblems', async () => {
-    await problemsProvider.load();
+    homeProvider.refresh();
   });
-
   reg('nuaaOj.refreshSubmissions', async () => {
-    await submissionsProvider.load();
+    homeProvider.refresh();
   });
-
   reg('nuaaOj.refreshTraining', async () => {
-    await trainingProvider.load();
+    homeProvider.refresh();
   });
-
   reg('nuaaOj.refreshHomework', async () => {
-    await homeworkProvider.load();
+    homeProvider.refresh();
   });
 
   reg('nuaaOj.openTraining', async () => {
@@ -192,32 +195,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage('没有可访问的训练题单。');
         return;
       }
-      const pick = await vscode.window.showQuickPick(items, {
-        title: '选择训练题单',
-        placeHolder: '输入关键词筛选训练题单',
-        matchOnDescription: true,
-      });
+      const pick = await vscode.window.showQuickPick(items, { title: '选择训练题单', placeHolder: '输入关键词筛选训练题单', matchOnDescription: true });
       if (!pick) return;
       const probs = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `正在加载「${pick.title}」的题目…` },
         () => auth.api.getTrainingProblemList(Number(pick.tid)),
       );
-      const pitems = (probs || []).map((p: any) => ({
-        label: `${p.problemId}  ${p.title}`,
-        description: p.difficulty ? `难度 ${p.difficulty}` : '',
-        displayId: p.problemId,
-      }));
+      const pitems = (probs || []).map((p: any) => ({ label: `${p.problemId}  ${p.title}`, description: p.difficulty ? `难度 ${p.difficulty}` : '', displayId: p.problemId }));
       if (!pitems.length) {
         vscode.window.showInformationMessage('该训练题单暂时没有题目。');
         return;
       }
-      const pp = await vscode.window.showQuickPick(pitems, {
-        title: `训练：${pick.title}`,
-        placeHolder: '选择要打开的题目',
-      });
+      const pp = await vscode.window.showQuickPick(pitems, { title: `训练：${pick.title}`, placeHolder: '选择要打开的题目' });
       if (!pp) return;
-      const base = vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
-      const ctx = await service.openProblem(`${base}/training/${pick.tid}/problem/${pp.displayId}`);
+      const ctx = await service.openProblem(`${baseUrl()}/training/${pick.tid}/problem/${pp.displayId}`);
       if (ctx) setCurrent(ctx);
     } catch (e: any) {
       vscode.window.showErrorMessage(`加载训练题单失败：${e?.message ?? e}`);
@@ -237,9 +228,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     let allowed: string[];
-    if (ctx.allowedLanguages && ctx.allowedLanguages.length) {
-      allowed = ctx.allowedLanguages;
-    } else {
+    if (ctx.allowedLanguages && ctx.allowedLanguages.length) allowed = ctx.allowedLanguages;
+    else {
       try {
         allowed = (await auth.api.getLanguages()).map((l) => l.name);
       } catch (e: any) {
@@ -272,13 +262,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const panel = await ensurePanel(ctx);
     revealPanel(panel);
     if (action === 'test') {
-      panel.postStatus('正在编译并运行样例…');
+      panel.postStatus('正在运行样例…');
       const res = await service.runTest(ctx);
       panel.postTestResult(res);
     } else {
       const final = await service.submit(ctx, (t) => panel.postStatus(t));
       if (final) panel.postSubmitResult(final);
-      void submissionsProvider.load();
     }
   };
 
@@ -339,20 +328,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ProblemPanel.closeAll();
   };
 
-  const applyInfo = async (info: {
-    ctx: ProblemContext;
-    fileUri: vscode.Uri;
-    language: string;
-    allowed: boolean;
-  }) => {
+  const applyInfo = async (info: { ctx: ProblemContext; fileUri: vscode.Uri; language: string; allowed: boolean }) => {
     const signature = `${ProblemPanel.key(info.ctx)}|${info.ctx.solutionFile}|${info.language}|${info.allowed}`;
-    if (signature === lastSignature) return; // nothing meaningful changed
+    if (signature === lastSignature) return;
     lastSignature = signature;
-
     void vscode.commands.executeCommand('setContext', 'nuaaOj.hasProblem', true);
     void vscode.commands.executeCommand('setContext', 'nuaaOj.canSubmit', info.allowed);
     currentProvider.setContext(info.ctx);
-
     let panel = ProblemPanel.current.get(ProblemPanel.key(info.ctx));
     if (!panel) {
       const detail = await getDetailFor(info.ctx);
@@ -362,13 +344,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await panel.setActiveFile(info.ctx, info.fileUri, info.language, info.allowed);
   };
 
-  // Triggered on active-editor change / visible editors change.
   const onActiveEditor = async () => {
     try {
       const ed = vscode.window.activeTextEditor;
       if (!ed || ed.document.uri.scheme !== 'file') {
-        // No active file editor. If NO visible editors remain (all tabs closed / file deleted),
-        // close the statement panel. Otherwise keep it (e.g. focus is on the webview).
         if (vscode.window.visibleTextEditors.length === 0) clearAndClose();
         return;
       }
@@ -383,7 +362,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   };
 
-  // Triggered when a document is closed or files are deleted/renamed: re-evaluate even with no active editor.
   const onAfterCloseOrDelete = async () => {
     try {
       const vis = vscode.window.visibleTextEditors;
@@ -415,16 +393,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   void onActiveEditor();
 
-  if (auth.currentUser) {
-    void problemsProvider.load();
-    void homeworkProvider.load();
-    void trainingProvider.load();
-    void submissionsProvider.load();
-  }
-
   output.appendLine('NUAA OJ 扩展已启动。');
 
-  // Clean up the temporary workspace (if any) when the extension is deactivated.
   context.subscriptions.push({ dispose: () => void cleanupTempRoot() });
 }
 

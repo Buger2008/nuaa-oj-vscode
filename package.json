@@ -2,7 +2,7 @@
   "name": "nuaa-oj",
   "displayName": "NUAA OJ",
   "description": "在 VS Code 中直接登录、查找、编写、测试并提交 NUAA OJ（HOJ）题目，无需浏览器。",
-  "version": "0.9.11",
+  "version": "1.0.0",
   "publisher": "buger",
   "license": "MIT",
   "engines": {
@@ -115,89 +115,38 @@
     "views": {
       "nuaaOjContainer": [
         {
-          "id": "nuaaOjCurrent",
-          "name": "当前题目",
-          "icon": "resources/nuaa-oj.svg"
-        },
-        {
-          "id": "nuaaOjProblems",
-          "name": "题目",
-          "icon": "resources/nuaa-oj.svg"
-        },
-        {
-          "id": "nuaaOjHomework",
-          "name": "作业",
-          "icon": "resources/nuaa-oj.svg"
-        },
-        {
-          "id": "nuaaOjTraining",
-          "name": "训练题单",
-          "icon": "resources/nuaa-oj.svg"
-        },
-        {
-          "id": "nuaaOjSubmissions",
-          "name": "我的提交",
-          "icon": "resources/nuaa-oj.svg"
+          "id": "nuaaOjHome",
+          "name": "NUAA OJ",
+          "type": "webview"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "nuaaOjProblems",
-        "contents": "尚未登录。\n[登录 NUAA OJ](command:nuaaOj.login)\n登录后即可搜索并打开题目。"
-      }
-    ],
     "menus": {
       "view/title": [
         {
-          "command": "nuaaOj.login",
-          "when": "view == nuaaOjProblems || view == nuaaOjHomework || view == nuaaOjTraining || view == nuaaOjSubmissions || view == nuaaOjCurrent",
-          "group": "navigation@0"
-        },
-        {
-          "command": "nuaaOj.searchProblems",
-          "when": "view == nuaaOjProblems",
+          "command": "nuaaOj.openProblem",
+          "when": "view == nuaaOjHome",
           "group": "navigation@1"
         },
         {
-          "command": "nuaaOj.openProblem",
-          "when": "view == nuaaOjProblems",
+          "command": "nuaaOj.searchProblems",
+          "when": "view == nuaaOjHome",
           "group": "navigation@2"
         },
         {
           "command": "nuaaOj.openTraining",
-          "when": "view == nuaaOjProblems",
-          "group": "navigation@2"
-        },
-        {
-          "command": "nuaaOj.refreshProblems",
-          "when": "view == nuaaOjProblems",
+          "when": "view == nuaaOjHome",
           "group": "navigation@3"
         },
         {
-          "command": "nuaaOj.refreshTraining",
-          "when": "view == nuaaOjTraining",
-          "group": "navigation@1"
+          "command": "nuaaOj.login",
+          "when": "view == nuaaOjHome",
+          "group": "navigation@4"
         },
         {
-          "command": "nuaaOj.refreshHomework",
-          "when": "view == nuaaOjHomework",
-          "group": "navigation@1"
-        },
-        {
-          "command": "nuaaOj.selectLanguage",
-          "when": "view == nuaaOjCurrent",
-          "group": "navigation@1"
-        },
-        {
-          "command": "nuaaOj.showProblem",
-          "when": "view == nuaaOjCurrent",
-          "group": "navigation@2"
-        },
-        {
-          "command": "nuaaOj.refreshSubmissions",
-          "when": "view == nuaaOjSubmissions",
-          "group": "navigation@1"
+          "command": "nuaaOj.refreshProblems",
+          "when": "view == nuaaOjHome",
+          "group": "navigation@5"
         }
       ],
       "editor/title": [
@@ -366,6 +315,7 @@
     "typescript": "^5.5.4"
   }
 }
+
 
 
 

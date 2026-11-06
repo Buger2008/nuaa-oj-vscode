@@ -34,6 +34,7 @@ const vscode = {
     createOutputChannel: () => ({ appendLine(){}, append(){}, show(){}, dispose(){} }),
     createStatusBarItem: () => ({ show(){}, hide(){}, dispose(){}, text:'', tooltip:'', command:'' }),
     registerTreeDataProvider: () => ({ dispose(){} }),
+    registerWebviewViewProvider: () => ({ dispose(){} }),
     onDidChangeActiveTextEditor: () => ({ dispose(){} }),
     onDidChangeVisibleTextEditors: () => ({ dispose(){} }),
     visibleTextEditors: [],
@@ -89,3 +90,4 @@ Module._load = function (request, parent, isMain) {
   if (typeof ext.deactivate === 'function') ext.deactivate();
   console.log('LOAD TEST PASSED');
 })().catch((e) => { console.error('LOAD TEST FAILED:', e); process.exit(1); });
+
