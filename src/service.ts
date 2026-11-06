@@ -325,8 +325,34 @@ export class NuaaOjService implements ProblemPanelHost {
     return this.auth.api.changePassword(oldPassword, newPassword);
   }
 
+  private lastEmailCodeAt = 0;
   async sendEmailCode(email: string): Promise<any> {
-    return this.auth.api.getChangeEmailCode(email);
+    const now = Date.now();
+    if (now - this.lastEmailCodeAt < 60000) {
+      throw new OjError('发送过于频繁，请 60 秒后再试。');
+    }
+    this.lastEmailCodeAt = now;
+    try {
+      return await this.auth.api.getChangeEmailCode(email);
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (/server error|servlet|internal|500/i.test(msg)) {
+        throw new OjError('学校邮件服务当前异常（server error），验证码很可能发不出去。请稍后再试或联系管理员。');
+      }
+      throw e;
+    }
+  }
+
+  /** After password change: prompt re-login, log out, and open the login view. */
+  passwordChanged(): void {
+    void (async () => {
+      const choice = await vscode.window.showInformationMessage('密码修改成功，请重新登录。', { modal: true }, '重新登录');
+      await this.auth.logout();
+      this.onDataChanged();
+      if (choice === '重新登录') {
+        void vscode.commands.executeCommand('nuaaOj.login');
+      }
+    })();
   }
 
   async changeEmail(password: string, newEmail: string, code: string): Promise<any> {

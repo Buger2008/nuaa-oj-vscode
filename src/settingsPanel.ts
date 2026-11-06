@@ -4,6 +4,7 @@ export interface SettingsHost {
   getInfo(): any;
   saveInfo(fields: any): Promise<any>;
   changePassword(oldPassword: string, newPassword: string): Promise<any>;
+  passwordChanged(): void;
   sendEmailCode(email: string): Promise<any>;
   changeEmail(password: string, newEmail: string, code: string): Promise<any>;
   uploadAvatar(dataUrl: string): Promise<any>;
@@ -47,7 +48,8 @@ export class SettingsPanel {
           if (!m.oldPassword || !m.newPassword) return fail('密码不能为空');
           if (m.newPassword !== m.againPassword) return fail('两次新密码不一致');
           await this.host.changePassword(m.oldPassword, m.newPassword);
-          ok('密码修改成功。');
+          ok('密码修改成功，请重新登录。');
+          this.host.passwordChanged();
         } else if (m?.type === 'sendEmailCode') {
           if (!m.email) return fail('请先填写新邮箱');
           await this.host.sendEmailCode(m.email);
@@ -89,9 +91,10 @@ export class SettingsPanel {
  .btn.sec{background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);}
  .row{display:flex;gap:8px;align-items:center;}
  .avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid var(--vscode-panel-border);background:rgba(127,127,127,.15);}
- .notice{padding:8px 12px;border-radius:6px;margin:10px 0;display:none;}
- .notice.ok{display:block;background:rgba(103,194,58,.18);color:#67c23a;}
- .notice.err{display:block;background:rgba(245,108,108,.18);color:#f56c6c;}
+ .notice{padding:10px 16px;border-radius:6px;display:none;position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.35);max-width:80vw;}
+ .notice.ok{display:block;background:#1f7a34;color:#fff;}
+ .notice.err{display:block;background:#a12a2a;color:#fff;}
+ button:disabled{opacity:.55;cursor:default;}
  .hint{color:var(--vscode-descriptionForeground);font-size:11.5px;margin:4px 0 0 142px;}
 </style></head><body>
 <h1>设置</h1>
@@ -134,7 +137,8 @@ export class SettingsPanel {
  const vscode = acquireVsCodeApi();
  const $ = function(id){ return document.getElementById(id); };
  const notice = $('notice');
- function show(ok,msg){ notice.className='notice '+(ok?'ok':'err'); notice.textContent=msg; }
+ var noticeTimer=null;
+ function show(ok,msg){ notice.className='notice '+(ok?'ok':'err'); notice.textContent=msg; if(noticeTimer) clearTimeout(noticeTimer); noticeTimer=setTimeout(function(){ notice.className='notice'; }, 4500); }
  function fill(info){
    if(!info) return;
    var map={realname:'realname',nickname:'nickname',school:'school',number:'number',cfUsername:'cfUsername',blog:'blog',github:'github',signature:'signature'};
@@ -148,7 +152,20 @@ export class SettingsPanel {
    vscode.postMessage({type:'saveInfo', fields:f});
  });
  $('btnPwd').addEventListener('click',function(){ vscode.postMessage({type:'changePassword', oldPassword:$('oldPassword').value, newPassword:$('newPassword').value, againPassword:$('againPassword').value}); });
- $('btnSendCode').addEventListener('click',function(){ vscode.postMessage({type:'sendEmailCode', email:$('newEmail').value.trim()}); });
+ var emailCdTimer=null;
+ function startEmailCooldown(sec){
+   var btn=$('btnSendCode'); if(!btn) return;
+   if(emailCdTimer) return;
+   var left=sec; btn.disabled=true; btn.textContent=left+'s 后重发';
+   emailCdTimer=setInterval(function(){ left--; if(left<=0){ clearInterval(emailCdTimer); emailCdTimer=null; btn.disabled=false; btn.textContent='发送验证码'; } else { btn.textContent=left+'s 后重发'; } },1000);
+ }
+ $('btnSendCode').addEventListener('click',function(){
+   var em=$('newEmail').value.trim();
+   if(!em){ show(false,'请先填写新邮箱'); return; }
+   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ show(false,'邮箱格式不正确'); return; }
+   vscode.postMessage({type:'sendEmailCode', email:em});
+   startEmailCooldown(60);
+ });
  $('btnEmail').addEventListener('click',function(){ vscode.postMessage({type:'changeEmail', password:$('emailPassword').value, email:$('newEmail').value.trim(), code:$('code').value.trim()}); });
  $('avatarFile').addEventListener('change',function(e){ var file=e.target.files&&e.target.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(){ vscode.postMessage({type:'uploadAvatar', dataUrl:r.result}); }; r.readAsDataURL(file); });
  window.addEventListener('message',function(e){ var m=e.data;
