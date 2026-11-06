@@ -7,6 +7,7 @@ import { InitialState, renderProblemHtml } from './statement';
 
 export interface ProblemPanelHost {
   runTest(ctx: ProblemContext): Promise<RunResult>;
+  runCloudTest(ctx: ProblemContext, onProgress?: (text: string) => void): Promise<RunResult>;
   submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any>;
   changeLanguage(ctx: ProblemContext, language: string): Promise<{ ok: boolean; fileName?: string; language?: string; message?: string }>;
   loadLastAcceptedCode(ctx: ProblemContext): Promise<{ ok: boolean; message?: string; noCode?: boolean; cancelled?: boolean; fileName?: string; language?: string; switched?: boolean }>;
@@ -167,6 +168,11 @@ export class ProblemPanel {
         case 'test': {
           this.postStatus('正在编译并运行样例…');
           const res = await this.host.runTest(this.ctx);
+          this.postTestResult(res);
+          break;
+        }
+        case 'cloudTest': {
+          const res = await this.host.runCloudTest(this.ctx, (t) => this.postStatus(t));
           this.postTestResult(res);
           break;
         }

@@ -21,7 +21,7 @@ import { resolveCCompiler, resolveCppCompiler } from './toolchain';
 import { ProblemDetail } from './types';
 import { ProblemPanel, ProblemPanelHost } from './problemPanel';
 import { InitialState } from './statement';
-import { RunResult, RunnerConfig, isLocallyRunnable, runSamples } from './runner';
+import { CaseResult, CaseStatus, RunResult, RunnerConfig, isLocallyRunnable, runSamples } from './runner';
 import { statusMeta } from './status';
 
 export interface ParsedTarget {
@@ -430,6 +430,133 @@ export class NuaaOjService implements ProblemPanelHost {
       return { ok: false, language, cases: [], totalTimeMs: 0, skipped: `当前语言 ${language} 暂不支持本地运行，请直接提交评测。` };
     }
     return runSamples(fileUri.fsPath, language, ctx.samples, ctx.timeLimit, await this.runnerConfig(), (m) => this.output.appendLine(`[test] ${m}`));
+  }
+
+  /**
+   * Cloud sample test: run the current code against the problem's samples on the OJ (online debug).
+   * The server rate-limits online debugging (~5s between submissions), so samples are submitted
+   * sequentially with the configured interval, retrying automatically on 403 "too frequent".
+   */
+  async runCloudTest(ctx: ProblemContext, onProgress?: (text: string) => void): Promise<RunResult> {
+    const fileUri = await this.getSolutionUri(ctx);
+    if (!fileUri) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '未找到对应的代码文件。' };
+    await this.saveDocument(fileUri);
+    const doc = await vscode.workspace.openTextDocument(fileUri);
+    const code = doc.getText();
+    if (!code.trim()) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '代码为空。' };
+    const fileLang = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase());
+    const language = submissionLanguage(ctx, fileUri.fsPath) || ctx.language || fileLang || '';
+    if (!language) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '无法判断语言。' };
+    const samples = ctx.samples || [];
+    if (!samples.length) return { ok: false, language, cases: [], totalTimeMs: 0, skipped: '该题没有公开样例，无法云端样例测试。' };
+
+    const interval = Math.max(0, vscode.workspace.getConfiguration('nuaaOj').get<number>('cloudTest.intervalMs', 5500));
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const cases: CaseResult[] = [];
+    const start = Date.now();
+    let lastSubmit = 0;
+
+    const submitWithRetry = async (input: string, expected: string): Promise<string> => {
+      let waited = 0;
+      for (;;) {
+        try {
+          return await this.auth.api.submitTestJudge({
+            pid: ctx.pid,
+            language,
+            code,
+            userInput: input,
+            expectedOutput: expected,
+            type: 'public',
+            isRemoteJudge: false,
+          });
+        } catch (e: any) {
+          const msg = e instanceof OjError ? e.message : String(e?.message ?? e);
+          if (/频繁|稍后|too (many|often)|rate/i.test(msg) && waited < 20000) {
+            onProgress?.(`在线调试限流，等待重试…（已等 ${Math.round(waited / 1000)}s）`);
+            await sleep(1500);
+            waited += 1500;
+            continue;
+          }
+          throw e;
+        }
+      }
+    };
+
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      if ((s.input || '').length > 1000) {
+        cases.push({
+          index: i + 1,
+          input: s.input,
+          expected: s.output,
+          actual: '',
+          stderr: '样例输入超过 1000 字符，HOJ 在线调试不支持（请用本地测试或直接提交）。',
+          status: 'RE',
+          timeMs: 0,
+        });
+        continue;
+      }
+      if (i > 0 && interval > 0) {
+        let left = interval - (Date.now() - lastSubmit);
+        while (left > 0) {
+          onProgress?.(`样例 ${i + 1}/${samples.length}：等待限流冷却 ${Math.ceil(left / 1000)}s…`);
+          const step = Math.min(500, left);
+          await sleep(step);
+          left -= step;
+        }
+      }
+      onProgress?.(`样例 ${i + 1}/${samples.length}：提交云端在线调试…`);
+      let key: string;
+      try {
+        key = await submitWithRetry(s.input, s.output);
+        lastSubmit = Date.now();
+      } catch (e: any) {
+        const msg = e instanceof OjError ? e.message : String(e?.message ?? e);
+        cases.push({ index: i + 1, input: s.input, expected: s.output, actual: '', stderr: `提交失败：${msg}`, status: 'RE', timeMs: 0 });
+        lastSubmit = Date.now();
+        continue;
+      }
+
+      onProgress?.(`样例 ${i + 1}/${samples.length}：云端评测中…`);
+      let vo: any;
+      const t0 = Date.now();
+      while (Date.now() - t0 < 40000) {
+        await sleep(500);
+        try {
+          vo = await this.auth.api.getTestJudgeResult(key);
+        } catch (e: any) {
+          vo = { status: 4, stderr: e?.message ?? String(e) };
+          break;
+        }
+        if (vo && vo.status !== 5 && vo.status != null) break;
+      }
+      if (!vo || vo.status === 5 || vo.status == null) {
+        cases.push({ index: i + 1, input: s.input, expected: s.output, actual: '', stderr: '云端评测超时。', status: 'RE', timeMs: 0 });
+        continue;
+      }
+      const st = Number(vo.status);
+      const map: Record<number, CaseStatus> = {
+        0: 'AC',
+        [-1]: 'WA',
+        [-3]: 'WA',
+        [-2]: 'CE',
+        1: 'TLE',
+        2: 'RE',
+        3: 'RE',
+        4: 'RE',
+        8: 'WA',
+      };
+      cases.push({
+        index: i + 1,
+        input: s.input,
+        expected: s.output,
+        actual: vo.userOutput ?? '',
+        stderr: vo.stderr || '',
+        status: map[st] || 'RE',
+        timeMs: Number(vo.time) || 0,
+      });
+    }
+    return { ok: cases.every((c) => c.status === 'AC'), language, cases, totalTimeMs: Date.now() - start, cloud: true };
   }
 
   async submit(ctx: ProblemContext, onProgress: (text: string) => void): Promise<any> {

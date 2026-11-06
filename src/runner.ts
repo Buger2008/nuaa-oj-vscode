@@ -23,6 +23,7 @@ export interface RunResult {
   compileError?: string;
   cases: CaseResult[];
   totalTimeMs: number;
+  cloud?: boolean;
 }
 
 export interface RunnerConfig {

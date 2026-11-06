@@ -21,6 +21,7 @@
   - **在题面面板顶部和侧边栏「当前题目 → 语言」都能切换语言**（只列出该题允许的语言）；切换语言会**像打开题目一样新建对应语言的代码文件**；
   - **若题目只允许一种语言（例如只允许 C），会自动锁定为该语言**，无法切换到其它语言，新建文件也会用对应扩展名。
 - **本地样例测试**：根据题面自带样例，在本地编译并运行你的程序，逐样例对比输出（AC / WA / TLE / RE / CE）。支持 C / C++ / Java / Python / Go / JavaScript / Rust。
+- **云端样例测试**：题面面板另有「☁ 云端样例测试」按钮，用 OJ 服务器的在线调试（`submit-problem-test-judge`）运行当前代码并返回结果，适合本地没装编译器或想验证服务器环境。受站点限流影响每例约需 5 秒（自动等待/重试），输入超 1000 字符的样例会跳过。
 - **C/C++ 编译器自动探测**：留空时依次尝试 `cl`（MSVC）、`gcc`/`g++`、`clang`/`clang++`，都找不到时回退 `clang`/`clang++`。会用「实际编译一个小程序」的方式验证编译器可用性，避免选到不能用的编译器。
   - 使用 clang 时会自动补一个 `bits/stdc++.h` 头文件垫片（shim），因此 `#include <bits/stdc++.h>` 的代码在 clang（libc++）下也能本地编译。
 - **提交并轮询结果**：按**当前文件**的语言提交，实时显示 Pending → Judging → Accepted 等状态，最终给出时间、内存、得分，以及每题测试点详情。
@@ -36,7 +37,7 @@ cd nuaa-oj-vscode
 npm install
 npm run compile
 npx vsce package --no-dependencies --allow-missing-repository
-code --install-extension nuaa-oj-0.8.6.vsix
+code --install-extension nuaa-oj-0.9.0.vsix
 ```
 
 也可以用 F5 调试：用 VS Code 打开本文件夹，按 `F5` 启动扩展开发宿主窗口。
@@ -125,6 +126,7 @@ nuaa-oj-vscode/
 - 独立、可打包的扩展，参考了 cph-ng 的「题目 + 测试点 + 面板」思路，但针对 HOJ 的 HTTP API 重新实现，不依赖浏览器插件。
 - 比赛（contest）题目暂未直接支持（需要先注册比赛、且比赛提交规则不同），会提示在浏览器打开。
 - 本扩展仅用于辅助个人学习，请遵守学校 OJ 的使用规定。
+
 
 
 

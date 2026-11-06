@@ -185,6 +185,7 @@ export function renderProblemHtml(
 
 <div class="toolbar">
   <button id="btn-test">▶ 用样例测试</button>
+  <button id="btn-cloudtest" title="在 OJ 服务器上用样例运行当前代码（在线调试，每例约需 5 秒）">☁ 云端样例测试</button>
   <button id="btn-submit" ${canSubmit ? '' : 'disabled title="当前文件语言被本题禁止，无法提交"'}>☁ 提交代码</button>
   <button class="secondary" id="btn-lastac" title="获取你最近一次通过的代码并覆盖当前文件">⤓ 最近AC代码</button>
   <button class="secondary" id="btn-browser">在浏览器打开</button>
@@ -224,6 +225,7 @@ ${bodyHtml}
   });
 
   $('btn-test').addEventListener('click', () => vscode.postMessage({ type: 'test' }));
+  $('btn-cloudtest').addEventListener('click', () => vscode.postMessage({ type: 'cloudTest' }));
   $('btn-submit').addEventListener('click', () => vscode.postMessage({ type: 'submit' }));
   $('btn-lastac').addEventListener('click', () => vscode.postMessage({ type: 'loadAc' }));
   $('btn-browser').addEventListener('click', () => vscode.postMessage({ type: 'openInBrowser' }));
@@ -249,7 +251,7 @@ ${bodyHtml}
   }
 
   function renderTest(r) {
-    let html = '<h3 style="margin:14px 0 8px">本地样例测试</h3>';
+    let html = '<h3 style="margin:14px 0 8px">' + (r.cloud ? '云端样例测试' : '本地样例测试') + '</h3>';
     if (r.skipped) { html += '<div class="summary">' + escapeHtml(r.skipped) + '</div>'; $('results').innerHTML = html; return; }
     if (r.compileError) {
       html += '<div class="summary" style="border-color:#e6a23c"><b>编译错误：</b></div>' + pre(r.compileError);

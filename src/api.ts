@@ -276,6 +276,37 @@ export class OjApi {
     return this.request('/api/get-all-case-result', { query: { submitId } });
   }
 
+  /** Submit an online (cloud) test-judge with a custom input; returns a testJudgeKey. */
+  async submitTestJudge(params: {
+    pid: number;
+    language: string;
+    code: string;
+    userInput: string;
+    expectedOutput?: string;
+    type?: 'public' | 'contest' | 'group';
+    mode?: string;
+    isRemoteJudge?: boolean;
+  }): Promise<string> {
+    return this.request('/api/submit-problem-test-judge', {
+      method: 'POST',
+      body: {
+        pid: params.pid,
+        language: params.language,
+        code: params.code,
+        type: params.type || 'public',
+        userInput: params.userInput,
+        expectedOutput: params.expectedOutput ?? '',
+        mode: params.mode ?? '',
+        isRemoteJudge: params.isRemoteJudge ?? false,
+      },
+    });
+  }
+
+  /** Get the result of an online test-judge. status 5 = pending; otherwise done (key is then removed). */
+  async getTestJudgeResult(testJudgeKey: string): Promise<any> {
+    return this.request('/api/get-test-judge-result', { query: { testJudgeKey } });
+  }
+
   async checkSubmissionsStatus(submitIds: number[], cid?: number): Promise<Record<string, any>> {
     return this.request('/api/check-submissions-status', {
       method: 'POST',
