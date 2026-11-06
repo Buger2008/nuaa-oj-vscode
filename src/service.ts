@@ -4,6 +4,7 @@ import { AuthManager } from './auth';
 import { OjError } from './api';
 import { RecordsPanel } from './recordsPanel';
 import { AssistantPanel } from './assistantPanel';
+import { ProfilePanel } from './profilePanel';
 import {
   ProblemContext,
   buildContext,
@@ -252,6 +253,26 @@ export class NuaaOjService implements ProblemPanelHost {
   async openAssistant(ctx: ProblemContext): Promise<void> {
     if (!(await this.auth.ensureLoggedIn())) return;
     await AssistantPanel.show(ctx, this, this.extensionUri);
+  }
+
+  // ---- Ability profile ------------------------------------------------------
+  async profile(): Promise<any> {
+    const u = this.assistantUser();
+    if (!u) return null;
+    return this.auth.api.studentProfile(u);
+  }
+
+  async advice(kind: 'knowledge' | 'method', onEvent: (ev: any) => void, signal: AbortSignal): Promise<void> {
+    const u = this.assistantUser();
+    if (!u) throw new OjError('请先登录。');
+    return kind === 'knowledge'
+      ? this.auth.api.adviceKnowledgeStream(u, onEvent, signal)
+      : this.auth.api.adviceMethodStream(u, onEvent, signal);
+  }
+
+  async openProfile(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await ProfilePanel.show(this, this.extensionUri);
   }
 
   private base(): string {

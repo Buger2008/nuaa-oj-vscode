@@ -8,6 +8,7 @@ export interface HomeCallbacks {
   openLogin: () => void;
   logout: () => Promise<void>;
   openUrl: (url: string) => void;
+  openProfile: () => void;
   onChange?: () => void;
 }
 
@@ -110,6 +111,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'openUrl':
         this.cb.openUrl(String(m.url));
+        break;
+      case 'openProfile':
+        this.cb.openProfile();
         break;
       case 'openProblem':
         await this.cb.openProblem(String(m.value));
@@ -444,6 +448,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    content.innerHTML='';
    if(!state.loggedIn || !user){ needLogin(); return; }
    const card=el('div','card'); card.appendChild(el('div','name', user.nickname||user.username)); card.appendChild(el('div','row','账号：'+user.username)); if(user.school) card.appendChild(el('div','row','学校：'+user.school)); if(user.signature) card.appendChild(el('div','row',user.signature)); if(user.roles&&user.roles.length) card.appendChild(el('div','row','角色：'+user.roles.join(', ')));
+   const prof=el('button','btn','📊 能力画像'); prof.style.background='#0a84ff'; prof.style.color='#fff'; prof.style.border='none'; prof.style.marginRight='8px'; prof.addEventListener('click',()=>vscode.postMessage({type:'openProfile'})); card.appendChild(prof);
    const lo=el('button','btn','退出登录'); lo.addEventListener('click',()=>vscode.postMessage({type:'logout'})); card.appendChild(lo);
    content.appendChild(card);
  }

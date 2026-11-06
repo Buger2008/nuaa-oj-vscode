@@ -401,4 +401,65 @@ export class OjApi {
     }
     if (buf.trim()) parseBlock(buf);
   }
+
+  // ---- Ability profile & streaming advice -----------------------------------
+  async studentProfile(username: string): Promise<any> {
+    return this.request(`/recommendation-api/student_profile/${encodeURIComponent(username)}`);
+  }
+
+  private async streamGet(path: string, onEvent: (ev: any) => void, signal?: AbortSignal): Promise<void> {
+    const url = this.buildUrl(path);
+    const token = this.getToken ? await this.getToken() : undefined;
+    const headers: Record<string, string> = { 'Url-Type': 'general', Accept: 'text/event-stream' };
+    if (token) headers['Authorization'] = token;
+    let res: Response;
+    try {
+      res = await fetch(url, { method: 'GET', headers, signal });
+    } catch (e: any) {
+      throw new OjError(`无法连接服务：${e?.message ?? e}`);
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new OjError(`服务返回 HTTP ${res.status} ${t.slice(0, 200)}`, res.status);
+    }
+    const parseBlock = (block: string) => {
+      for (const line of block.split(/\r?\n/)) {
+        const m = /^data:\s?(.*)$/.exec(line);
+        if (!m) continue;
+        const payload = m[1].trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          onEvent(JSON.parse(payload));
+        } catch {
+          onEvent({ t: payload });
+        }
+      }
+    };
+    const reader = res.body?.getReader();
+    if (!reader) {
+      parseBlock(await res.text());
+      return;
+    }
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        parseBlock(buf.slice(0, idx));
+        buf = buf.slice(idx + 2);
+      }
+    }
+    if (buf.trim()) parseBlock(buf);
+  }
+
+  async adviceKnowledgeStream(username: string, onEvent: (ev: any) => void, signal?: AbortSignal): Promise<void> {
+    return this.streamGet(`/recommendation-api/student/${encodeURIComponent(username)}/advice/knowledge/stream`, onEvent, signal);
+  }
+
+  async adviceMethodStream(username: string, onEvent: (ev: any) => void, signal?: AbortSignal): Promise<void> {
+    return this.streamGet(`/recommendation-api/student/${encodeURIComponent(username)}/advice/method/stream`, onEvent, signal);
+  }
 }
