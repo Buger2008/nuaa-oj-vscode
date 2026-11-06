@@ -443,6 +443,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .pg:disabled{opacity:.4;cursor:default;}
  .pgdots{padding:0 2px;color:var(--vscode-descriptionForeground);}
  .rchart{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px 10px;margin-bottom:8px;}
+ .rlegend{font-size:11px;color:var(--vscode-descriptionForeground);margin-top:2px;}
  .rrow{display:flex;gap:6px;align-items:center;margin:3px 0;font-size:11.5px;}
  .rname{width:68px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--vscode-descriptionForeground);}
  .rbars{flex:1;display:flex;gap:6px;align-items:center;}
@@ -608,7 +609,40 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  }
 
  // 我的
- function makeBar(kind,val,max,color){ const w=Math.max(2, Math.round(val/max*100)); const b=el('div','rbar'); b.style.width=w+'%'; b.style.background=color; b.title=kind+': '+val; const wrap=el('div','rbarwrap'); wrap.appendChild(b); const lab=el('span','rbarval',String(val)); wrap.appendChild(lab); return wrap; }
+ let rankChartType = 'bar';
+ let lastRankData = null, lastRankFilters = null;
+ function rankLegend(kind){ return kind==='acm' ? '<div class="rlegend"><span style="color:#0a84ff">■ AC</span> <span style="color:#909399">■ Total</span></div>' : '<div class="rlegend"><span style="color:#8b5cf6">■ Score</span></div>'; }
+ function barSpan(v,max,color){ const w=Math.max(2,Math.round(v/max*100)); return '<div class="rbarwrap"><div class="rbar" style="width:'+w+'%;background:'+color+'"></div><span class="rbarval">'+v+'</span></div>'; }
+ function rankBarInner(top,kind){ const max=Math.max.apply(null, top.map(function(r){ return Math.max(r.ac||0,r.total||0,r.score||0); }).concat([1])); let h=''; top.forEach(function(r){ h+='<div class="rrow"><span class="rname">'+esc(r.username||r.nickname||'')+'</span><div class="rbars">'; if(kind==='acm'){ h+=barSpan(r.ac||0,max,'#0a84ff'); h+=barSpan(r.total||0,max,'#909399'); } else h+=barSpan(r.score||0,max,'#8b5cf6'); h+='</div></div>'; }); return h; }
+ function rankLineSvg(top,kind){
+   const n=top.length; if(!n) return '<div class="muted">暂无数据</div>';
+   const W=320,H=150,padL=26,padR=8,padT=10,padB=18,iw=W-padL-padR,ih=H-padT-padB;
+   const series = kind==='acm' ? [['AC',top.map(function(r){return r.ac||0;}),'#0a84ff'],['Total',top.map(function(r){return r.total||0;}),'#909399']] : [['Score',top.map(function(r){return r.score||0;}),'#8b5cf6']];
+   let allv=[]; series.forEach(function(se){ allv=allv.concat(se[1]); });
+   const max=Math.max.apply(null, allv.concat([1]));
+   function X(i){ return padL+(n<=1?iw/2:iw*i/(n-1)); } function Y(v){ return padT+ih*(1-v/max); }
+   let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'">';
+   s+='<line x1="'+padL+'" y1="'+padT+'" x2="'+padL+'" y2="'+(padT+ih)+'" stroke="rgba(127,127,127,.35)"/><line x1="'+padL+'" y1="'+(padT+ih)+'" x2="'+(padL+iw)+'" y2="'+(padT+ih)+'" stroke="rgba(127,127,127,.35)"/>';
+   series.forEach(function(se){ const pts=se[1].map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1);}).join(' '); s+='<polyline fill="none" stroke="'+se[2]+'" stroke-width="2" points="'+pts+'"/>'; se[1].forEach(function(v,i){ s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="2.2" fill="'+se[2]+'"><title>'+esc(top[i].username||'')+' '+se[0]+' '+v+'</title></circle>'; }); });
+   top.forEach(function(r,i){ if(n<=6||i%2===0) s+='<text x="'+X(i).toFixed(1)+'" y="'+(H-4)+'" font-size="8" fill="currentColor" text-anchor="middle">'+esc(r.username||'')+'</text>'; });
+   s+='</svg>'; return s;
+ }
+ function rankStackSvg(top,kind){
+   const n=top.length; if(!n) return '<div class="muted">暂无数据</div>';
+   const W=320,H=150,padL=8,padR=8,padT=10,padB=18,iw=W-padL-padR,ih=H-padT-padB;
+   const max=Math.max.apply(null, top.map(function(r){ return kind==='acm' ? (r.total||0) : (r.score||0); }).concat([1]));
+   const slot=iw/n; const bw=Math.max(4,slot*0.6);
+   let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'">';
+   s+='<line x1="'+padL+'" y1="'+(padT+ih)+'" x2="'+(padL+iw)+'" y2="'+(padT+ih)+'" stroke="rgba(127,127,127,.35)"/>';
+   top.forEach(function(r,i){ const cx=padL+slot*(i+0.5); const x=(cx-bw/2).toFixed(1); const base=padT+ih;
+     if(kind==='acm'){ const ac=r.ac||0, tot=r.total||0; const hAc=ih*ac/max, hRest=ih*Math.max(0,tot-ac)/max; const yRest=base-hAc-hRest;
+       if(hRest>0) s+='<rect x="'+x+'" y="'+yRest.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hRest.toFixed(1)+'" fill="#909399"><title>'+esc(r.username||'')+' Total '+tot+'</title></rect>';
+       s+='<rect x="'+x+'" y="'+(base-hAc).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hAc.toFixed(1)+'" fill="#0a84ff"><title>'+esc(r.username||'')+' AC '+ac+'</title></rect>';
+     } else { const h=ih*(r.score||0)/max; s+='<rect x="'+x+'" y="'+(base-h).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="#8b5cf6"><title>'+esc(r.username||'')+' Score '+(r.score||0)+'</title></rect>'; }
+     s+='<text x="'+cx.toFixed(1)+'" y="'+(H-4)+'" font-size="8" fill="currentColor" text-anchor="middle">'+esc(r.username||'')+'</text>';
+   });
+   s+='</svg>'; return s;
+ }
  function renderRank(data, filters){
    content.innerHTML='';
    if(data.needLogin){ needLogin(); return; }
@@ -627,17 +661,17 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    const items=data.items||[];
    if(!items.length){ content.appendChild(el('div','empty','没有匹配的排名。')); return; }
    const top=items.slice(0,10);
-   const maxV=Math.max.apply(null, top.map(function(r){ return Math.max(r.ac||0, r.total||0, r.score||0); }).concat([1]));
+   lastRankData=data; lastRankFilters={kind:f.kind,page:f.page,size:f.size,search:f.search};
+   const cbar=el('div','filters');
+   const types = f.kind==='acm' ? [['bar','柱状'],['line','折线'],['stack','堆叠']] : [['bar','柱状'],['line','折线']];
+   types.forEach(function(pair){ const b=el('button','tab'+(rankChartType===pair[0]?' active':''),pair[1]); b.addEventListener('click',function(){ rankChartType=pair[0]; renderRank(lastRankData,lastRankFilters); }); cbar.appendChild(b); });
+   content.appendChild(cbar);
    const chart=el('div','rchart');
-   top.forEach(function(r){
-     const row=el('div','rrow');
-     row.appendChild(el('span','rname',r.username||r.nickname||''));
-     const bars=el('div','rbars');
-     if(f.kind==='acm'){ bars.appendChild(makeBar('ac', r.ac||0, maxV, '#0a84ff')); bars.appendChild(makeBar('total', r.total||0, maxV, '#909399')); }
-     else { bars.appendChild(makeBar('score', r.score||0, maxV, '#8b5cf6')); }
-     row.appendChild(bars); chart.appendChild(row);
-   });
-   chart.appendChild(el('div','muted', f.kind==='acm' ? '■ AC    ■ Total' : '■ Score'));
+   try{
+     chart.innerHTML = (rankChartType==='line') ? (rankLineSvg(top,f.kind)+rankLegend(f.kind))
+       : (rankChartType==='stack') ? (rankStackSvg(top,f.kind)+rankLegend(f.kind))
+       : (rankBarInner(top,f.kind)+rankLegend(f.kind));
+   }catch(e){ chart.textContent='图表渲染失败：'+(e&&e.message); }
    content.appendChild(chart);
    const tbl=document.createElement('table');
    const thead=document.createElement('thead'); const hr=document.createElement('tr');
