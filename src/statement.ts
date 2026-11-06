@@ -92,11 +92,18 @@ export function renderProblemHtml(
     .map(([key, title]) => `<section class="md"><h3>${title}</h3><div class="content" id="sec-${key}"></div></section>`)
     .join('');
   // Raw Markdown source; the client script renders it with markdown-it + KaTeX.
+  const base = (init.baseUrl || '').replace(/\/+$/, '');
+  const absolutize = (s: string): string => {
+    if (!s || !base) return s;
+    return s
+      .replace(/\]\((\/(?!\/)[^)\s]+)\)/g, '](' + base + '$1)')
+      .replace(/(<img\b[^>]*\bsrc\s*=\s*["'])(\/[^"']*)(["'])/gi, '$1' + base + '$2$3');
+  };
   const rawJson = JSON.stringify({
-    description: p.description || '',
-    input: p.input || '',
-    output: p.output || '',
-    hint: p.hint || '',
+    description: absolutize(p.description || ''),
+    input: absolutize(p.input || ''),
+    output: absolutize(p.output || ''),
+    hint: absolutize(p.hint || ''),
   }).replace(/</g, '\\u003c');
 
   const initJson = JSON.stringify({ ...init, isFileIO: ctx.isFileIO, sampleCount: ctx.samples.length }).replace(/</g, '\\u003c');
