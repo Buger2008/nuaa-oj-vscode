@@ -151,17 +151,21 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
   private async sendStatus(f: any): Promise<void> {
     if (!this.view) return;
-    const filters = { onlyMine: !!f?.onlyMine, status: f?.status ?? '' };
+    const onlyMine = !!f?.onlyMine;
+    const status = f?.status ?? '';
+    const page = Math.max(1, Number(f?.page) || 1);
+    const size = [15, 30, 50, 100].includes(Number(f?.size)) ? Number(f?.size) : 15;
+    const filters = { onlyMine, status, page, size };
     if (!(await this.auth.ensureLoggedIn(false))) {
-      this.view.webview.postMessage({ type: 'status', payload: { needLogin: true, items: [], total: 0 }, filters });
+      this.view.webview.postMessage({ type: 'status', payload: { needLogin: true, items: [], total: 0, page, size, pages: 0 }, filters });
       return;
     }
     try {
       const res = await this.auth.api.getSubmissionList({
-        limit: 50,
-        currentPage: 1,
-        onlyMine: filters.onlyMine,
-        status: filters.status === '' || filters.status == null ? undefined : Number(filters.status),
+        limit: size,
+        currentPage: page,
+        onlyMine,
+        status: status === '' || status == null ? undefined : Number(status),
       });
       const items = (res.records || []).map((r: any) => {
         const st = statusMeta(r.status);
@@ -180,9 +184,11 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
           url: `${this.baseUrl()}/submission-detail/${r.submitId}`,
         };
       });
-      this.view.webview.postMessage({ type: 'status', payload: { items, total: res.total || 0 }, filters });
+      const total = res.total || 0;
+      const pages = (res as any).pages || Math.max(1, Math.ceil(total / size));
+      this.view.webview.postMessage({ type: 'status', payload: { items, total, page, size, pages }, filters });
     } catch (e: any) {
-      this.view.webview.postMessage({ type: 'status', payload: { error: e?.message ?? String(e), items: [], total: 0 }, filters });
+      this.view.webview.postMessage({ type: 'status', payload: { error: e?.message ?? String(e), items: [], total: 0, page, size, pages: 0 }, filters });
     }
   }
 
@@ -347,6 +353,12 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  tr:hover{background:rgba(127,127,127,.12);}
  a.runid{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
  .pill{display:inline-block;color:#fff;border-radius:8px;padding:0 6px;font-size:10.5px;font-weight:700;}
+ .pager{display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:center;margin:10px 0 4px;}
+ .pg{font-family:inherit;font-size:12px;min-width:26px;padding:2px 6px;border-radius:4px;border:1px solid var(--vscode-panel-border);background:transparent;color:var(--vscode-foreground);cursor:pointer;}
+ .pg:hover{background:rgba(127,127,127,.18);}
+ .pg.active{background:#0a84ff;border-color:#0a84ff;color:#fff;font-weight:700;}
+ .pg:disabled{opacity:.4;cursor:default;}
+ .pgdots{padding:0 2px;color:var(--vscode-descriptionForeground);}
 </style></head><body>
 <div class="tabs">
  <button class="tab active" data-tab="problems">自由练习</button>
@@ -440,16 +452,22 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  function renderStatus(data, filters){
    content.innerHTML='';
    if(data.needLogin){ needLogin(); return; }
+   const f={ onlyMine:!!(filters&&filters.onlyMine), status:(filters&&filters.status!=null)?String(filters.status):'', page:(data&&data.page)||1, size:(data&&data.size)||15 };
+   function fire(){ vscode.postMessage({type:'status', onlyMine:f.onlyMine, status:f.status, page:f.page, size:f.size}); }
    const bar=el('div','filters');
    const sel=document.createElement('select');
    const opts=[['','全部状态'],['0','AC'],['-1','WA'],['1','TLE'],['2','MLE'],['3','RE'],['-2','CE'],['-3','PE'],['4','SE'],['8','PA']];
    opts.forEach(function(pair){ const o=document.createElement('option'); o.value=pair[0]; o.textContent=pair[1]; sel.appendChild(o); });
-   sel.value=(filters&&filters.status!=null)?String(filters.status):'';
-   const chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!!(filters&&filters.onlyMine);
-   function fire(){ vscode.postMessage({type:'status', onlyMine:chk.checked, status:sel.value}); }
-   sel.addEventListener('change',fire); chk.addEventListener('change',fire);
+   sel.value=f.status;
+   const chk=document.createElement('input'); chk.type='checkbox'; chk.checked=f.onlyMine;
    const lab=el('label',''); lab.appendChild(chk); lab.appendChild(document.createTextNode('只看我的'));
-   bar.appendChild(sel); bar.appendChild(lab); content.appendChild(bar);
+   const sizeSel=document.createElement('select');
+   [15,30,50,100].forEach(function(n){ const o=document.createElement('option'); o.value=String(n); o.textContent=n+'条/页'; sizeSel.appendChild(o); });
+   sizeSel.value=String(f.size);
+   sel.addEventListener('change',function(){ f.status=sel.value; f.page=1; fire(); });
+   chk.addEventListener('change',function(){ f.onlyMine=chk.checked; f.page=1; fire(); });
+   sizeSel.addEventListener('change',function(){ f.size=Number(sizeSel.value); f.page=1; fire(); });
+   bar.appendChild(sel); bar.appendChild(lab); bar.appendChild(sizeSel); content.appendChild(bar);
    if(data.error){ error(data.error); return; }
    const items=data.items||[];
    if(!items.length){ content.appendChild(el('div','empty','没有匹配的提交。')); return; }
@@ -470,7 +488,20 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
      tb.appendChild(tr);
    });
    tbl.appendChild(tb); content.appendChild(tbl);
-   content.appendChild(el('div','muted','共 '+data.total+' 条（显示前 50 条）'));
+
+   const total=Number(data.total)||0;
+   const size=Number(data.size)||f.size;
+   const pages=Math.max(1, Number(data.pages)||Math.ceil(total/size)||1);
+   const cur=Math.min(Math.max(1, Number(data.page)||1), pages);
+   function go(p){ f.page=p; fire(); }
+   function mk(label,page,disabled,active){ const b=el('button','pg'+(active?' active':''),label); if(disabled){ b.disabled=true; } else { b.addEventListener('click',function(){ go(page); }); } return b; }
+   function pageList(c,t){ const arr=[]; if(t<=7){ for(var i=1;i<=t;i++) arr.push(i); return arr; } arr.push(1); const s=Math.max(2,c-1), e=Math.min(t-1,c+1); if(s>2) arr.push('...'); for(var i2=s;i2<=e;i2++) arr.push(i2); if(e<t-1) arr.push('...'); if(t>1) arr.push(t); return arr; }
+   const pager=el('div','pager');
+   pager.appendChild(mk('‹', Math.max(1,cur-1), cur<=1, false));
+   pageList(cur,pages).forEach(function(pg){ if(pg==='...'){ pager.appendChild(el('span','pgdots','…')); } else { pager.appendChild(mk(String(pg), Number(pg), false, Number(pg)===cur)); } });
+   pager.appendChild(mk('›', Math.min(pages,cur+1), cur>=pages, false));
+   content.appendChild(pager);
+   content.appendChild(el('div','muted','共 '+total+' 条 · 第 '+cur+' / '+pages+' 页'));
  }
 
  window.addEventListener('message',(e)=>{ const m=e.data;
