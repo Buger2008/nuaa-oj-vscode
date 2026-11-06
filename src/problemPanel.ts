@@ -166,21 +166,21 @@ export class ProblemPanel {
           break;
         }
         case 'test': {
-          if (this.ctx.isFileIO) {
-            this.postStatus('该题为文件 IO 题：无法用样例/自定义输入测试，已按“提交评测”处理（云端使用官方文件）…');
+          if (this.ctx.isFileIO && !(this.ctx.samples && this.ctx.samples.length)) {
+            this.postStatus('该题为文件 IO 题且无样例：已按“提交评测”处理（云端使用官方文件）…');
             const final = await this.host.submit(this.ctx, (t) => this.postStatus(t));
             if (final) this.postSubmitResult(final);
             break;
           }
-          this.postStatus('正在编译并运行样例…');
+          this.postStatus('正在运行样例…');
           const res = await this.host.runTest(this.ctx);
           this.postTestResult(res);
           break;
         }
         case 'cloudTest':
         case 'cloudTestCustom': {
-          if (this.ctx.isFileIO) {
-            this.postStatus('该题为文件 IO 题：已按“提交评测”处理（云端使用官方文件）…');
+          if (this.ctx.isFileIO && !(this.ctx.samples && this.ctx.samples.length)) {
+            this.postStatus('该题为文件 IO 题且无样例：已按“提交评测”处理（云端使用官方文件）…');
             const final = await this.host.submit(this.ctx, (t) => this.postStatus(t));
             if (final) this.postSubmitResult(final);
             break;

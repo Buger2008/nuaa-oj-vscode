@@ -229,6 +229,7 @@ export async function runSamples(
   timeLimitMs: number,
   cfg: RunnerConfig,
   onProgress?: (msg: string) => void,
+  fileIO?: { readFileName: string; writeFileName: string },
 ): Promise<RunResult> {
   const isWindows = process.platform === 'win32';
   const srcExt = path.extname(sourcePath).toLowerCase();
@@ -281,18 +282,30 @@ export async function runSamples(
       const sample = samples[i];
       onProgress?.(`运行样例 ${i + 1}/${samples.length} …`);
       const { command, args } = plan.run(sourcePath, outDir);
-      const r = await runProcess(command, args, { cwd: outDir, stdin: sample.input, timeoutMs: timeLimitMs + extra });
+      if (fileIO && fileIO.readFileName) {
+        try { fs.writeFileSync(path.join(outDir, fileIO.readFileName), sample.input); } catch { /* ignore */ }
+        try { fs.rmSync(path.join(outDir, fileIO.writeFileName), { force: true }); } catch { /* ignore */ }
+      }
+      const r = await runProcess(command, args, {
+        cwd: outDir,
+        stdin: fileIO ? undefined : sample.input,
+        timeoutMs: timeLimitMs + extra,
+      });
+      let actual = r.stdout;
+      if (fileIO && fileIO.writeFileName) {
+        try { actual = fs.readFileSync(path.join(outDir, fileIO.writeFileName), 'utf8'); } catch { actual = ''; }
+      }
       let status: CaseStatus;
       if (r.spawnError) status = 'RE';
       else if (r.timedOut) status = 'TLE';
       else if (r.code !== 0) status = 'RE';
-      else if (compare(sample.output, r.stdout)) status = 'AC';
+      else if (compare(sample.output, actual)) status = 'AC';
       else status = 'WA';
       cases.push({
         index: i + 1,
         input: sample.input,
         expected: sample.output,
-        actual: r.stdout,
+        actual,
         stderr: r.spawnError ? `${r.spawnError}\n${r.stderr}` : r.stderr,
         status,
         timeMs: r.timeMs,
