@@ -479,6 +479,18 @@ export class OjApi {
   async getUserCalendarHeatmap(uid: string, username: string): Promise<any> {
     return this.request('/api/get-user-calendar-heatmap', { query: { uid, username } });
   }
+
+  async getRecent7ACRank(): Promise<any[]> {
+    return this.request('/api/get-recent-seven-ac-rank');
+  }
+
+  async getLastWeekSubmissionStatistics(forceRefresh = false): Promise<any> {
+    return this.request('/api/get-last-week-submission-statistics', { query: { forceRefresh } });
+  }
+
+  async getRecentUpdatedProblemList(): Promise<any[]> {
+    return this.request('/api/get-recent-updated-problem');
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }

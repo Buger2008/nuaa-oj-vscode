@@ -114,6 +114,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'rank':
         await this.sendRank(m);
         break;
+      case 'home':
+        await this.sendHome();
+        break;
       case 'openUrl':
         this.cb.openUrl(String(m.url));
         break;
@@ -159,7 +162,34 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       await this.sendStatus({ onlyMine: false, status: '' });
     } else if (tab === 'rank') {
       await this.sendRank({ kind: 'acm', page: 1, size: 30, search: '' });
+    } else if (tab === 'home') {
+      await this.sendHome();
     }
+  }
+
+  private async sendHome(): Promise<void> {
+    if (!this.view) return;
+    if (!(await this.auth.ensureLoggedIn(false))) {
+      this.view.webview.postMessage({ type: 'home', payload: { needLogin: true } });
+      return;
+    }
+    const payload: any = {};
+    try {
+      payload.rank = await this.auth.api.getRecent7ACRank();
+    } catch (e: any) {
+      payload.rankError = e?.message ?? String(e);
+    }
+    try {
+      payload.stats = await this.auth.api.getLastWeekSubmissionStatistics(false);
+    } catch (e: any) {
+      payload.statsError = e?.message ?? String(e);
+    }
+    try {
+      payload.recent = await this.auth.api.getRecentUpdatedProblemList();
+    } catch (e: any) {
+      payload.recentError = e?.message ?? String(e);
+    }
+    this.view.webview.postMessage({ type: 'home', payload });
   }
 
   private async sendRank(f: any): Promise<void> {
@@ -395,6 +425,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .btn{font-family:inherit;font-size:12.5px;padding:5px 12px;border-radius:4px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;margin-top:10px;}
  .err{color:#f56c6c;padding:8px;}
  .empty{padding:14px;color:var(--vscode-descriptionForeground);}
+ .sech{font-weight:700;font-size:13px;margin:14px 0 6px;border-left:3px solid var(--vscode-focusBorder);padding-left:7px;}
+ .hchart{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:6px 8px;margin-bottom:4px;}
  .filters{display:flex;gap:8px;align-items:center;margin:2px 0 8px;flex-wrap:wrap;}
  .filters select{font-family:inherit;font-size:12px;padding:3px 6px;border-radius:4px;background:var(--vscode-dropdown-background);color:var(--vscode-dropdown-foreground);border:1px solid var(--vscode-dropdown-border,var(--vscode-panel-border));}
  .filters label{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:var(--vscode-descriptionForeground);}
@@ -419,7 +451,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .rbarval{font-size:10px;color:var(--vscode-descriptionForeground);}
 </style></head><body>
 <div class="tabs">
- <button class="tab active" data-tab="problems">自由练习</button>
+ <button class="tab active" data-tab="home">首页</button>
+ <button class="tab" data-tab="problems">自由练习</button>
  <button class="tab" data-tab="trainings">课内实验</button>
  <button class="tab" data-tab="homework">作业</button>
  <button class="tab" data-tab="status">状态</button>
@@ -429,7 +462,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 <div class="body" id="content"><div class="empty">加载中…</div></div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
- let activeTab = 'problems';
+ let activeTab = 'home';
  let state = { loggedIn:false, user:null };
  const content = document.getElementById('content');
  const el = (tag, cls, txt) => { const e=document.createElement(tag); if(cls) e.className=cls; if(txt!==undefined) e.textContent=txt; return e; };
@@ -440,6 +473,60 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  function needLogin(){ const d=el('div','loginbox'); const b=el('button','loginbtn','登录 NUAA OJ'); b.addEventListener('click',()=>vscode.postMessage({type:'login'})); d.appendChild(el('div','muted','登录后可浏览题目、作业与提交记录')); d.appendChild(b); content.innerHTML=''; content.appendChild(d); }
  function error(t){ content.innerHTML=''; content.appendChild(el('div','err', t)); }
 
+ // 首页
+ function secTitle(t){ return el('div','sech',t); }
+ function lineChart(stats){
+   const dates=(stats&&stats.dateStrList)||[], ac=(stats&&stats.acCountList)||[], tot=(stats&&stats.totalCountList)||[];
+   const n=dates.length; if(!n) return '<div class="muted">暂无数据</div>';
+   const W=320,H=150,padL=30,padR=8,padT=10,padB=20,iw=W-padL-padR,ih=H-padT-padB;
+   const max=Math.max.apply(null, tot.concat(ac).concat([1]));
+   function X(i){ return padL + (n<=1? iw/2 : iw*i/(n-1)); }
+   function Y(v){ return padT + ih*(1-(Number(v)||0)/max); }
+   function poly(arr){ return arr.map(function(v,i){ return X(i).toFixed(1)+','+Y(v).toFixed(1); }).join(' '); }
+   let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'">';
+   s+='<line x1="'+padL+'" y1="'+padT+'" x2="'+padL+'" y2="'+(padT+ih)+'" stroke="rgba(127,127,127,.35)"/>';
+   s+='<line x1="'+padL+'" y1="'+(padT+ih)+'" x2="'+(padL+iw)+'" y2="'+(padT+ih)+'" stroke="rgba(127,127,127,.35)"/>';
+   s+='<polyline fill="none" stroke="#909399" stroke-width="1.6" points="'+poly(tot)+'"/>';
+   s+='<polyline fill="none" stroke="#0a84ff" stroke-width="2" points="'+poly(ac)+'"/>';
+   tot.forEach(function(v,i){ s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="2.2" fill="#909399"><title>'+esc(dates[i])+' 总提交 '+v+'</title></circle>'; });
+   ac.forEach(function(v,i){ s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="2.4" fill="#0a84ff"><title>'+esc(dates[i])+' AC '+v+'</title></circle>'; });
+   dates.forEach(function(d,i){ if(n<=7 || i%2===0){ s+='<text x="'+X(i).toFixed(1)+'" y="'+(H-4)+'" font-size="9" fill="currentColor" text-anchor="middle">'+esc(d)+'</text>'; } });
+   s+='</svg>';
+   return s + '<div class="muted">■ AC <span style="color:#909399">■ 总提交</span> · 近7天（最大值 '+max+'）</div>';
+ }
+ function renderHome(data){
+   content.innerHTML='';
+   if(data.needLogin){ needLogin(); return; }
+   // 过题榜单
+   content.appendChild(secTitle('近 7 天过题榜单'));
+   if(data.rankError){ content.appendChild(el('div','err','榜单加载失败：'+data.rankError)); }
+   else if(data.rank && data.rank.length){
+     const tbl=document.createElement('table'); const thead=document.createElement('thead'); const hr=document.createElement('tr');
+     ['#','用户','昵称','AC'].forEach(function(h){ hr.appendChild(el('th','',h)); }); thead.appendChild(hr); tbl.appendChild(thead);
+     const tb=document.createElement('tbody');
+     data.rank.forEach(function(r,i){ const tr=document.createElement('tr');
+       tr.appendChild(el('td','',String(i+1)));
+       const tdu=el('td'); const a=el('a','runid',r.username||''); a.href='#'; a.title='打开个人主页'; a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUser', uid:r.uid, username:r.username}); }); tdu.appendChild(a); if(r.titleName){ const tg=el('span','pill',r.titleName); tg.style.background=r.titleColor||'#409eff'; tg.style.marginLeft='4px'; tdu.appendChild(tg);} tr.appendChild(tdu);
+       tr.appendChild(el('td','',r.nickname||''));
+       tr.appendChild(el('td','',String(r.ac!=null?r.ac:'-')));
+       tb.appendChild(tr);
+     });
+     tbl.appendChild(tb); content.appendChild(tbl);
+   } else { content.appendChild(el('div','empty','暂无数据')); }
+   // 提交统计
+   content.appendChild(secTitle('近 7 天提交统计'));
+   if(data.statsError){ content.appendChild(el('div','err','统计加载失败：'+data.statsError)); }
+   else if(data.stats){ const d=el('div','hchart'); d.innerHTML=lineChart(data.stats); content.appendChild(d); }
+   else content.appendChild(el('div','empty','暂无数据'));
+   // 最近更新题目
+   content.appendChild(secTitle('最近更新题目'));
+   if(data.recentError){ content.appendChild(el('div','err','加载失败：'+data.recentError)); }
+   else if(data.recent && data.recent.length){
+     const list=el('div');
+     data.recent.forEach(function(p){ const it=el('div','item'); it.appendChild(el('span','id',p.problemId)); it.appendChild(el('span','t',p.title||'')); it.title=p.title||''; it.addEventListener('click',function(){ vscode.postMessage({type:'openProblem', value:p.problemId}); }); list.appendChild(it); });
+     content.appendChild(list);
+   } else content.appendChild(el('div','empty','暂无数据'));
+ }
  // 自由练习
  function renderProblems(data, keyword){
    content.innerHTML='';
@@ -627,6 +714,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  window.addEventListener('message',(e)=>{ const m=e.data;
    if(m.type==='status'){ renderStatus(m.payload, m.filters); return; }
    if(m.type==='rank'){ renderRank(m.payload, m.filters); return; }
+   if(m.type==='home'){ renderHome(m.payload); return; }
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
@@ -635,7 +723,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    else if(m.type==='error'){ error(m.text); }
  });
  vscode.postMessage({type:'ready'});
- vscode.postMessage({type:'tab',tab:'problems'});
+ vscode.postMessage({type:'tab',tab:'home'});
 </script></body></html>`;
   }
 }
+
