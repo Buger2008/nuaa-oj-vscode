@@ -289,8 +289,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     service.openInBrowser(ctx);
   });
 
-  reg('nuaaOj.loadLastAcceptedCode', async () => {
-    const ctx = currentProvider.current || (await service.contextFromActiveEditor());
+  reg('nuaaOj.openAssistant', async () => {
+    let ctx = currentProvider.current;
+    if (!ctx) ctx = await service.contextFromActiveEditor();
+    if (!ctx) {
+      vscode.window.showInformationMessage('请先打开一个题目。');
+      return;
+    }
+    await service.openAssistant(ctx);
+  });
+
+  reg('nuaaOj.loadLastAcceptedCode', async () => {    const ctx = currentProvider.current || (await service.contextFromActiveEditor());
     if (!ctx) {
       vscode.window.showInformationMessage('请先打开一个题目。');
       return;

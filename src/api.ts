@@ -325,4 +325,80 @@ export class OjApi {
   } = {}): Promise<Paged<SubmissionRecord>> {
     return this.request('/api/get-submission-list', { query: params });
   }
+
+  // ---- NUAA learning assistant (recommendation service) ---------------------
+  async assistantContext(username: string, problemId: string, submitId?: string | number): Promise<any> {
+    return this.request(`/recommendation-api/student/${encodeURIComponent(username)}/assistant/context`, {
+      query: { problem_id: problemId, submit_id: submitId },
+    });
+  }
+
+  async assistantSessions(username: string): Promise<any[]> {
+    return this.request(`/recommendation-api/student/${encodeURIComponent(username)}/assistant/sessions`);
+  }
+
+  async assistantSession(username: string, sessionId: string): Promise<any[]> {
+    return this.request(`/recommendation-api/student/${encodeURIComponent(username)}/assistant/session/${encodeURIComponent(sessionId)}`);
+  }
+
+  /**
+   * Ask the assistant, consuming the SSE stream. Calls `onEvent` for each JSON
+   * payload (`{t}` text chunk, `{meta}`, `{done:true}`, ...).
+   */
+  async assistantAskStream(
+    username: string,
+    body: any,
+    onEvent: (ev: any) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const url = this.buildUrl(`/recommendation-api/student/${encodeURIComponent(username)}/assistant/ask`);
+    const token = this.getToken ? await this.getToken() : undefined;
+    const headers: Record<string, string> = {
+      'Url-Type': 'general',
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    };
+    if (token) headers['Authorization'] = token;
+    let res: Response;
+    try {
+      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    } catch (e: any) {
+      throw new OjError(`无法连接助教服务：${e?.message ?? e}`);
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new OjError(`助教服务返回 HTTP ${res.status} ${t.slice(0, 200)}`, res.status);
+    }
+    const parseBlock = (block: string) => {
+      for (const line of block.split(/\r?\n/)) {
+        const m = /^data:\s?(.*)$/.exec(line);
+        if (!m) continue;
+        const payload = m[1].trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          onEvent(JSON.parse(payload));
+        } catch {
+          onEvent({ t: payload });
+        }
+      }
+    };
+    const reader = res.body?.getReader();
+    if (!reader) {
+      parseBlock(await res.text());
+      return;
+    }
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        parseBlock(buf.slice(0, idx));
+        buf = buf.slice(idx + 2);
+      }
+    }
+    if (buf.trim()) parseBlock(buf);
+  }
 }

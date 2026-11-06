@@ -194,6 +194,7 @@ export function renderProblemHtml(
   <button class="secondary" id="btn-mysub" title="在新标签页查看我的提交">我的提交</button>
   <button class="secondary" id="btn-allsub" title="在新标签页查看全部提交">全部提交</button>
   <button class="secondary" id="btn-mytest" title="在新标签页查看本次会话的自测记录">我的自测</button>
+  <button class="secondary" id="btn-ai" title="打开 NUAA AI 助教（针对性指导）">🤖 AI 助手</button>
   <button class="secondary" id="btn-browser">在浏览器打开</button>
   <button class="secondary" id="btn-refresh">刷新题面</button>
 </div>
@@ -245,6 +246,7 @@ ${bodyHtml}
   $('btn-mysub').addEventListener('click', () => vscode.postMessage({ type: 'openRecords', tab: 'my' }));
   $('btn-allsub').addEventListener('click', () => vscode.postMessage({ type: 'openRecords', tab: 'all' }));
   $('btn-mytest').addEventListener('click', () => vscode.postMessage({ type: 'openRecords', tab: 'test' }));
+  $('btn-ai').addEventListener('click', () => vscode.postMessage({ type: 'openAssistant' }));
   $('btn-browser').addEventListener('click', () => vscode.postMessage({ type: 'openInBrowser' }));
   $('btn-refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
   document.querySelectorAll('[data-copy-sample]').forEach((b) => {

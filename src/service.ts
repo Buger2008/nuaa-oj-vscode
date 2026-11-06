@@ -3,6 +3,7 @@ import * as path from 'path';
 import { AuthManager } from './auth';
 import { OjError } from './api';
 import { RecordsPanel } from './recordsPanel';
+import { AssistantPanel } from './assistantPanel';
 import {
   ProblemContext,
   buildContext,
@@ -206,6 +207,51 @@ export class NuaaOjService implements ProblemPanelHost {
 
   async openRecords(ctx: ProblemContext, tab: 'my' | 'all' | 'test'): Promise<void> {
     await RecordsPanel.show(ctx, this, this.extensionUri, tab);
+  }
+
+  // ---- AI assistant ---------------------------------------------------------
+  private assistantUser(): string | undefined {
+    return this.auth.currentUser?.username;
+  }
+
+  async getContext(ctx: ProblemContext): Promise<any> {
+    const u = this.assistantUser();
+    if (!u) return null;
+    return this.auth.api.assistantContext(u, ctx.displayId);
+  }
+
+  async getSessions(): Promise<any[]> {
+    const u = this.assistantUser();
+    if (!u) return [];
+    return this.auth.api.assistantSessions(u);
+  }
+
+  async getSession(sessionId: string): Promise<any[]> {
+    const u = this.assistantUser();
+    if (!u) return [];
+    return this.auth.api.assistantSession(u, sessionId);
+  }
+
+  async ask(
+    ctx: ProblemContext,
+    question: string,
+    sessionId: string,
+    onEvent: (ev: any) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const u = this.assistantUser();
+    if (!u) throw new OjError('请先登录。');
+    return this.auth.api.assistantAskStream(
+      u,
+      { question, session_id: sessionId || '', problem_id: ctx.displayId, activity_type: '', activity_id: '', group_id: '', require_guided: true, action: 'ask' },
+      onEvent,
+      signal,
+    );
+  }
+
+  async openAssistant(ctx: ProblemContext): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await AssistantPanel.show(ctx, this, this.extensionUri);
   }
 
   private base(): string {
@@ -972,3 +1018,4 @@ export class NuaaOjService implements ProblemPanelHost {
     vscode.window.showErrorMessage(`${prefix}：${msg}`);
   }
 }
+
