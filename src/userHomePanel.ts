@@ -7,6 +7,7 @@ export interface UserHomeHost {
   submissionUrl(submitId: number): string;
   openExternal(url: string): void;
   openProblem(value: string): Promise<any> | void;
+  openSubmission(submitId: number): Promise<any> | void;
 }
 
 function esc(s: any): string {
@@ -47,6 +48,7 @@ export class UserHomePanel {
       else if (m?.type === 'page') { this.page = Math.max(1, Number(m.page) || 1); await this.loadSubs(); }
       else if (m?.type === 'openUrl') this.host.openExternal(String(m.url));
       else if (m?.type === 'openProblem') void this.host.openProblem(String(m.value));
+      else if (m?.type === 'openSubmission') void this.host.openSubmission(Number(m.submitId));
     }, null, this.disposables);
   }
 
@@ -169,13 +171,13 @@ export class UserHomePanel {
      if(!d.items.length){ html+='<p class="muted">暂无提交</p>'; }
      else{
        html+='<table><thead><tr><th>RUNID</th><th>题目</th><th>状态</th><th>时间</th><th>内存</th><th>语言</th><th>提交时间</th></tr></thead><tbody>';
-       d.items.forEach(function(r){ html+='<tr><td><a class="runid" data-url="'+esc(r.url)+'">#'+r.submitId+'</a></td><td>'+esc((r.displayPid||'')+' '+(r.title||''))+'</td><td>'+esc(r.status)+'</td><td>'+esc(r.time)+' ms</td><td>'+esc(r.memory)+' KB</td><td>'+esc(r.language||'')+'</td><td>'+esc(r.submitTime? new Date(r.submitTime).toLocaleString():'')+'</td></tr>'; });
+       d.items.forEach(function(r){ html+='<tr><td><a class="runid" data-sid="'+r.submitId+'">#'+r.submitId+'</a></td><td>'+esc((r.displayPid||'')+' '+(r.title||''))+'</td><td>'+esc(r.status)+'</td><td>'+esc(r.time)+' ms</td><td>'+esc(r.memory)+' KB</td><td>'+esc(r.language||'')+'</td><td>'+esc(r.submitTime? new Date(r.submitTime).toLocaleString():'')+'</td></tr>'; });
        html+='</tbody></table>';
        html+='<div class="pager"><button id="prev" '+(d.page<=1?'disabled':'')+'>‹ 上一页</button><span class="muted">第 '+d.page+' / '+d.pages+' 页 · 共 '+d.total+' 条</span><button id="next" '+(d.page>=d.pages?'disabled':'')+'>下一页 ›</button></div>';
      }
    } else if(state.subsError){ html+='<p class="muted">'+esc(state.subsError)+'</p>'; }
    root.innerHTML=html;
-   root.querySelectorAll('a.runid').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUrl',url:a.getAttribute('data-url')}); }); });
+   root.querySelectorAll('a.runid').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openSubmission', submitId:a.getAttribute('data-sid')}); }); });
    root.querySelectorAll('a.extlink').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUrl',url:a.getAttribute('data-open')}); }); });
    root.querySelectorAll('a.plink').forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openProblem', value:a.getAttribute('data-pid')}); }); });
    const pv=document.getElementById('prev'); if(pv) pv.addEventListener('click',function(){ vscode.postMessage({type:'page',page:state.subs.page-1}); });

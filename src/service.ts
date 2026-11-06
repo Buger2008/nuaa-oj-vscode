@@ -403,6 +403,10 @@ export class NuaaOjService implements ProblemPanelHost {
     await UserHomePanel.show(this, this.extensionUri, uid, username);
   }
 
+  async openSubmission(submitId: number): Promise<void> {
+    await RecordsPanel.showDetail(this, this.extensionUri, submitId);
+  }
+
   private base(): string {
     return vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
   }

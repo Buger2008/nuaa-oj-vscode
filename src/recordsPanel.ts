@@ -38,6 +38,7 @@ export class RecordsPanel {
   private loading = false;
 
   private detailId: number | null = null;
+  private detailOnly = false;
   private detail: any = null;
   private detailCases: any[] = [];
   private detailLoading = false;
@@ -76,6 +77,32 @@ export class RecordsPanel {
     await p.reload();
   }
 
+  /** Open just a single submission's detail (no problem context), reusing the detail view. */
+  static async showDetail(host: RecordsHost, extensionUri: vscode.Uri, submitId: number): Promise<void> {
+    const key = `submission:${submitId}`;
+    const existing = RecordsPanel.map.get(key);
+    if (existing) {
+      existing.panel.reveal(vscode.ViewColumn.Active, false);
+      existing.detailId = submitId;
+      await existing.loadDetail(submitId);
+      return;
+    }
+    const panel = vscode.window.createWebviewPanel('nuaaOjRecords', `提交详情 #${submitId}`, vscode.ViewColumn.Active, {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+    });
+    const synth: any = { kind: 'problem', displayId: String(submitId), title: '', tid: 0, timeLimit: 1000, memoryLimit: 256, isFileIO: false, samples: [], allowedLanguages: [], url: '' };
+    const p = new RecordsPanel(panel, synth, host, extensionUri, 'my');
+    p.detailOnly = true;
+    p.detailId = submitId;
+    RecordsPanel.map.set(key, p);
+    panel.onDidDispose(() => {
+      RecordsPanel.map.delete(key);
+      while (p.disposables.length) { try { p.disposables.pop()?.dispose(); } catch { /* ignore */ } }
+    });
+    await p.loadDetail(submitId);
+  }
+
   private constructor(
     private panel: vscode.WebviewPanel,
     private ctx: ProblemContext,
@@ -86,7 +113,8 @@ export class RecordsPanel {
     this.tab = tab;
     panel.webview.onDidReceiveMessage(
       async (m) => {
-        if (m?.type === 'tab') { this.tab = m.tab; this.detailId = null; this.detail = null; await this.reload(); }
+        if (m?.type === 'ready') { if (this.detailOnly && this.detailId != null && !this.detail) await this.loadDetail(this.detailId); else if (!this.detailOnly && !this.data.length && !this.loading) await this.reload(); }
+        else if (m?.type === 'tab') { this.tab = m.tab; this.detailId = null; this.detail = null; await this.reload(); }
         else if (m?.type === 'open') this.host.openExternal(String(m.url));
         else if (m?.type === 'refresh') { if (this.detailId != null) await this.loadDetail(this.detailId); else await this.reload(); }
         else if (m?.type === 'detail') await this.loadDetail(Number(m.submitId));
@@ -253,7 +281,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
       let codeHtml = '';
       if (canView && code && !hidden) {
         codeHtml =
-          `<div class="actions"><button data-copy="${esc(code)}">复制代码</button><button class="secondary" data-apply="${sub.submitId ?? sid}">覆盖到源文件</button></div>` +
+          `<div class="actions"><button data-copy="${esc(code)}">复制代码</button>${this.detailOnly ? '' : `<button class="secondary" data-apply="${sub.submitId ?? sid}">覆盖到源文件</button>`}</div>` +
           `<pre class="code">${esc(code)}</pre>`;
       } else if (hidden) {
         codeHtml = '<p class="muted">该提交的代码被网站设置为隐藏，无法查看。</p>';
@@ -291,7 +319,9 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
         `</div>` +
         casesHtml +
         codeHtml +
-        `<div class="actions"><button data-back="1" class="secondary">← 返回列表</button><button class="secondary" data-open="${esc(url)}">在浏览器打开</button></div>` +
+        (this.detailOnly
+          ? `<div class="actions"></div>`
+          : `<div class="actions"><button data-back="1" class="secondary">← 返回列表</button><button class="secondary" data-open="${esc(url)}">在浏览器打开</button></div>`) +
         `</div>`;
     }
     return body;
