@@ -447,7 +447,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .filters label{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:var(--vscode-descriptionForeground);}
  table{border-collapse:collapse;width:100%;font-size:12px;}
  th,td{border-bottom:1px solid var(--vscode-panel-border);padding:5px 4px;text-align:left;white-space:nowrap;}
- th{position:sticky;top:0;background:inherit;}
+ th{font-weight:600;}
  tr:hover{background:rgba(127,127,127,.12);}
  a.runid{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
  .pill{display:inline-block;color:#fff;border-radius:8px;padding:0 6px;font-size:10.5px;font-weight:700;}

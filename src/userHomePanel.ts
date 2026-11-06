@@ -116,7 +116,7 @@ export class UserHomePanel {
  .cell.pad{background:transparent;}
  .rtip{position:fixed;z-index:99999;display:none;padding:4px 8px;border-radius:4px;font-size:12px;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis;background:var(--vscode-editorHoverWidget-background,#252526);color:var(--vscode-editorHoverWidget-foreground,#fff);border:1px solid var(--vscode-panel-border);box-shadow:0 2px 8px rgba(0,0,0,.4);}
  table{border-collapse:collapse;width:100%;font-size:12px;} th,td{border-bottom:1px solid var(--vscode-panel-border);padding:5px 4px;text-align:left;white-space:nowrap;}
- th{position:sticky;top:0;background:inherit;} tr:hover{background:rgba(127,127,127,.12);}
+ th{font-weight:600;} tr:hover{background:rgba(127,127,127,.12);}
  a.runid{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
  a.extlink{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
  .pager{display:flex;gap:6px;align-items:center;justify-content:center;margin:10px 0;}
