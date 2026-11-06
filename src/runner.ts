@@ -63,8 +63,9 @@ function runProcess(
     let timedOut = false;
     let settled = false;
     let child;
+    const useProcessGroup = process.platform !== 'win32';
     try {
-      child = spawn(command, args, { cwd: opts.cwd, windowsHide: true });
+      child = spawn(command, args, { cwd: opts.cwd, windowsHide: true, detached: useProcessGroup });
     } catch (e: any) {
       resolve({ code: null, stdout: '', stderr: '', timedOut: false, timeMs: 0, spawnError: e?.message ?? String(e) });
       return;
@@ -72,6 +73,15 @@ function runProcess(
     const timer = setTimeout(() => {
       timedOut = true;
       try {
+        // Kill the whole process group on POSIX so compiler/runner children don't survive.
+        if (useProcessGroup && child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+            return;
+          } catch {
+            /* fall through to single-process kill */
+          }
+        }
         child.kill('SIGKILL');
       } catch {
         /* ignore */
@@ -99,6 +109,7 @@ function runProcess(
       resolve({ code, stdout, stderr, timedOut, timeMs: Date.now() - start });
     });
 
+    if (child.stdin) child.stdin.on('error', () => undefined);
     if (opts.stdin !== undefined && child.stdin) {
       child.stdin.write(opts.stdin);
       child.stdin.end();
@@ -279,7 +290,10 @@ export async function runSamples(
   const isC = language === 'C' || language === 'C With O2' || srcExt === '.c';
   const compilerName = isC ? cfg.c : cfg.cpp;
   let extraInclude: string | undefined;
-  if (/clang/i.test(compilerName)) {
+  // Only libc++ toolchains (MSVC/clang on Windows, Apple clang on macOS) lack GNU's
+  // <bits/stdc++.h>. On Linux, clang normally uses libstdc++ and already has the real
+  // header — adding our shim there would shadow it and may drop declarations.
+  if (/clang/i.test(compilerName) && (isWindows || process.platform === 'darwin')) {
     extraInclude = await ensureBitsShim();
   }
   const plan = buildPlan(language, sourcePath, isWindows, cfg, extraInclude);
