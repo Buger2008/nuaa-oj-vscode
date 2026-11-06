@@ -393,9 +393,9 @@ export class NuaaOjService implements ProblemPanelHost {
     this.output.appendLine(`[compiler] C=${cComp.command}(${cComp.source}) C++=${cppComp.command}(${cppComp.source})`);
     return {
       c: cComp.command,
-      cArgs: c.get<string>('compiler.cArgs', '-O2 -std=c11 -lm'),
+      cArgs: c.get<string>('compiler.cArgs', ''),
       cpp: cppComp.command,
-      cppArgs: c.get<string>('compiler.cppArgs', '-O2 -std=c++17'),
+      cppArgs: c.get<string>('compiler.cppArgs', ''),
       java: c.get<string>('compiler.java', 'javac'),
       javaRun: c.get<string>('compiler.javaRun', 'java'),
       python: c.get<string>('compiler.python', process.platform === 'win32' ? 'python' : 'python3'),
@@ -413,7 +413,10 @@ export class NuaaOjService implements ProblemPanelHost {
     }
     // Make sure unsaved edits are written to disk before compiling.
     await this.saveDocument(fileUri);
-    const language = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase()) || ctx.language || '';
+    // Use the selected submission language (e.g. "C++ 20", "C++ With O2") so the local compiler
+    // applies the matching -std / -O2, else fall back to the file extension's language.
+    const extLang = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase()) || ctx.language || '';
+    const language = submissionLanguage(ctx, fileUri.fsPath) || extLang;
     if (ctx.isFileIO && !ctx.samples.length) {
       return {
         ok: false,

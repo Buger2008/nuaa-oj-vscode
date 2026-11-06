@@ -162,6 +162,33 @@ function shellSplit(s: string): string[] {
   return (s || '').match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)?.map((x) => x.replace(/^["']|["']$/g, '')) ?? [];
 }
 
+function isMsvcCl(compiler: string): boolean {
+  return /(^|[\\/])cl(\.exe)?$/i.test(compiler) || compiler.trim().toLowerCase() === 'cl';
+}
+
+/**
+ * Compiler standard/optimization flags that mirror the OJ's own per-language compileCommand, so
+ * local testing uses the SAME C/C++ standard as the selected submission language
+ * (C++ = c++14, C++ 17 = c++17, C++ 20 = c++20, and "With O2" adds -O2).
+ */
+function langStdFlags(language: string, compiler: string, isWindows: boolean): { flags: string[]; addLm: boolean } {
+  const l = (language || '').toLowerCase();
+  const cl = isMsvcCl(compiler);
+  const o2 = /with o2/.test(l);
+  let std: string | undefined;
+  let isC = false;
+  if (l === 'c' || l === 'c with o2') {
+    std = 'c11';
+    isC = true;
+  } else if (l.startsWith('c++') || l === 'cpp') {
+    std = /20/.test(l) ? 'c++20' : /17/.test(l) ? 'c++17' : 'c++14';
+  }
+  const flags: string[] = [];
+  if (o2) flags.push(cl ? '/O2' : '-O2');
+  if (std) flags.push(cl ? `/std:${std}` : `-std=${std}`);
+  return { flags, addLm: isC && !cl };
+}
+
 export function buildPlan(
   language: string,
   sourcePath: string,
@@ -176,15 +203,23 @@ export function buildPlan(
 
   if (language === 'C' || language === 'C With O2' || ext === '.c') {
     const outName = base + exeSuffix;
+    const { flags, addLm } = langStdFlags(language, cfg.c, isWindows);
     return {
-      compile: { command: cfg.c, args: (src, outDir) => [...shellSplit(cfg.cArgs), ...inc, src, '-o', path.join(outDir, outName)] },
+      compile: {
+        command: cfg.c,
+        args: (src, outDir) => [...flags, ...shellSplit(cfg.cArgs), ...inc, src, '-o', path.join(outDir, outName), ...(addLm ? ['-lm'] : [])],
+      },
       run: (_src, outDir) => ({ command: path.join(outDir, outName), args: [] }),
     };
   }
   if (/^C\+\+/i.test(language) || ['.cpp', '.cc', '.cxx'].includes(ext)) {
     const outName = base + exeSuffix;
+    const { flags } = langStdFlags(language, cfg.cpp, isWindows);
     return {
-      compile: { command: cfg.cpp, args: (src, outDir) => [...shellSplit(cfg.cppArgs), ...inc, src, '-o', path.join(outDir, outName)] },
+      compile: {
+        command: cfg.cpp,
+        args: (src, outDir) => [...flags, ...shellSplit(cfg.cppArgs), ...inc, src, '-o', path.join(outDir, outName)],
+      },
       run: (_src, outDir) => ({ command: path.join(outDir, outName), args: [] }),
     };
   }

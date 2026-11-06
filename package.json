@@ -2,7 +2,7 @@
   "name": "nuaa-oj",
   "displayName": "NUAA OJ",
   "description": "在 VS Code 中直接登录、查找、编写、测试并提交 NUAA OJ（HOJ）题目，无需浏览器。",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "publisher": "buger",
   "license": "MIT",
   "engines": {
@@ -295,8 +295,8 @@
         },
         "nuaaOj.compiler.cArgs": {
           "type": "string",
-          "default": "-O2 -std=c11 -lm",
-          "description": "C 编译参数（空格分隔）。"
+          "default": "",
+          "description": "C 额外编译参数（空格分隔）。-std=c11 / -O2 会按所选语言自动添加，这里只填额外参数。"
         },
         "nuaaOj.compiler.cpp": {
           "type": "string",
@@ -305,8 +305,8 @@
         },
         "nuaaOj.compiler.cppArgs": {
           "type": "string",
-          "default": "-O2 -std=c++17",
-          "description": "C++ 编译参数（空格分隔）。"
+          "default": "",
+          "description": "C++ 额外编译参数（空格分隔）。-std=c++14/17/20 和 -O2 会按所选语言自动添加，这里只填额外参数。"
         },
         "nuaaOj.compiler.java": {
           "type": "string",
@@ -366,6 +366,7 @@
     "typescript": "^5.5.4"
   }
 }
+
 
 
 
