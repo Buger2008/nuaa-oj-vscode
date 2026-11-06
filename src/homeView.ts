@@ -517,7 +517,17 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    // 提交统计
    content.appendChild(secTitle('近 7 天提交统计'));
    if(data.statsError){ content.appendChild(el('div','err','统计加载失败：'+data.statsError)); }
-   else if(data.stats){ const d=el('div','hchart'); try{ d.innerHTML=lineChart(data.stats); }catch(e){ d.textContent='图表渲染失败：'+(e&&e.message); } content.appendChild(d); }
+   else if(data.stats){ const d=el('div','hchart'); try{ d.innerHTML=lineChart(data.stats); }catch(e){ d.textContent='图表渲染失败：'+(e&&e.message); } content.appendChild(d);
+     const st=data.stats, dates=st.dateStrList||[], acs=st.acCountList||[], tots=st.totalCountList||[];
+     if(dates.length){
+       const t=document.createElement('table'); const th=document.createElement('thead'); const hr=document.createElement('tr');
+       ['日期','AC','总提交'].forEach(function(h){ hr.appendChild(el('th','',h)); }); th.appendChild(hr); t.appendChild(th);
+       const tb=document.createElement('tbody'); let sumA=0,sumT=0;
+       dates.forEach(function(dt,i){ const a=Number(acs[i])||0, tt=Number(tots[i])||0; sumA+=a; sumT+=tt; const tr=document.createElement('tr'); tr.appendChild(el('td','',dt)); tr.appendChild(el('td','',String(a))); tr.appendChild(el('td','',String(tt))); tb.appendChild(tr); });
+       const tr=document.createElement('tr'); const tda=el('td','','合计'); tda.style.fontWeight='700'; tr.appendChild(tda); const a2=el('td','',String(sumA)); a2.style.fontWeight='700'; tr.appendChild(a2); const t2=el('td','',String(sumT)); t2.style.fontWeight='700'; tr.appendChild(t2); tb.appendChild(tr);
+       t.appendChild(tb); content.appendChild(t);
+     }
+   }
    else content.appendChild(el('div','empty','暂无数据'));
    // 最近更新题目
    content.appendChild(secTitle('最近更新题目'));
