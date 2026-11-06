@@ -97,16 +97,12 @@ export class LearningPanel {
 <h1>学径</h1>
 <div class="muted" id="sub">加载中…</div>
 <div class="bar-actions">
-  <button class="btn" id="btn-ai">🤖 叽咕助教</button>
-  <button class="btn sec" id="btn-profile">📊 能力画像</button>
   <button class="btn sec" id="btn-refresh">刷新</button>
 </div>
 <div id="root"></div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
  const root=document.getElementById('root'), sub=document.getElementById('sub');
- document.getElementById('btn-ai').addEventListener('click',()=>vscode.postMessage({type:'openAssistant'}));
- document.getElementById('btn-profile').addEventListener('click',()=>vscode.postMessage({type:'openProfile'}));
  document.getElementById('btn-refresh').addEventListener('click',()=>vscode.postMessage({type:'refresh'}));
  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
  function render(data){
@@ -120,7 +116,7 @@ export class LearningPanel {
    const weak=ov&&ov.weak_point_count!=null?ov.weak_point_count:0;
    const rec=ov&&ov.recommendation_count!=null?ov.recommendation_count:0;
    let h='';
-   h+='<div class="hero"><div class="hero-title">发现 '+esc(weak)+' 个可提升的知识点，一起把它们补上</div><div class="hero-sub">当前进度 · '+esc(course.current_topic_label||'-')+'</div></div>';
+   if(Number(weak)>0){ h+='<div class="hero"><div class="hero-title">发现 '+esc(weak)+' 个可提升的知识点，一起把它们补上</div><div class="hero-sub">当前进度 · '+esc(course.current_topic_label||'-')+'</div></div>'; }
    h+='<h2>概览</h2><div class="cards">';
    h+='<div class="card"><div class="n">'+unlocked+' <small>个</small></div><div class="l">已解锁知识点</div><div class="s">学习地图中已开放</div></div>';
    h+='<div class="card"><div class="n">'+locked+' <small>个</small></div><div class="l">待解锁知识点</div><div class="s">完成前置后开放</div></div>';
