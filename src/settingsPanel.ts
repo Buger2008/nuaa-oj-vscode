@@ -162,7 +162,7 @@ export class SettingsPanel {
  $('btnSendCode').addEventListener('click',function(){
    var em=$('newEmail').value.trim();
    if(!em){ show(false,'请先填写新邮箱'); return; }
-   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ show(false,'邮箱格式不正确'); return; }
+   if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(em)){ show(false,'邮箱格式不正确'); return; }
    vscode.postMessage({type:'sendEmailCode', email:em});
    startEmailCooldown(60);
  });

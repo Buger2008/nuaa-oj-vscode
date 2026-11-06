@@ -106,7 +106,7 @@ export class UserHomePanel {
  const vscode = acquireVsCodeApi();
  const root = document.getElementById('root');
  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
- function normUrl(v, kind){ v=String(v||''); if(/^https?:\/\//i.test(v)) return v; if(kind==='github') return 'https://github.com/'+v.replace(/^@/,''); return 'https://'+v; }
+ function normUrl(v, kind){ v=String(v||''); if(/^https?:/i.test(v)) return v; if(kind==='github') return 'https://github.com/'+v.replace(/^@/,''); return 'https://'+v; }
  let state={ info:null, acCount:0, scoreSum:0, heat:null, subs:null };
  function render(){
    const i=state.info;
