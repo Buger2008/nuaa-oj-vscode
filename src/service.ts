@@ -414,22 +414,22 @@ export class NuaaOjService implements ProblemPanelHost {
     // Make sure unsaved edits are written to disk before compiling.
     await this.saveDocument(fileUri);
     const language = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase()) || ctx.language || '';
-    if (ctx.isFileIO) {
-      return {
-        ok: false,
-        language,
-        cases: [],
-        totalTimeMs: 0,
-        skipped: '该题为文件 IO 题，本地无法获取官方测试文件，请直接使用“提交代码”进行云端评测。',
-      };
-    }
-    if (!ctx.samples.length) {
-      return { ok: false, language, cases: [], totalTimeMs: 0, skipped: '该题没有公开样例，无法本地测试。可自行在代码中调试后提交。' };
-    }
     if (!isLocallyRunnable(language, fileUri.fsPath)) {
       return { ok: false, language, cases: [], totalTimeMs: 0, skipped: `当前语言 ${language} 暂不支持本地运行，请直接提交评测。` };
     }
-    return runSamples(fileUri.fsPath, language, ctx.samples, ctx.timeLimit, await this.runnerConfig(), (m) => this.output.appendLine(`[test] ${m}`));
+    // File-IO problems and problems without samples: still allow a run with blank input.
+    // (For file problems the actual data files come from the judge/cloud; locally this just runs
+    //  with empty stdin so code can still be smoke-tested.)
+    const samples = ctx.samples.length ? ctx.samples : [{ input: '', output: '' }];
+    const result = await runSamples(fileUri.fsPath, language, samples, ctx.timeLimit, await this.runnerConfig(), (m) =>
+      this.output.appendLine(`[test] ${m}`),
+    );
+    // A blank expected output means "no expected output" → label a clean run as OK, not WA.
+    for (const c of result.cases) {
+      if ((c.expected || '').trim() === '' && (c.status === 'WA' || c.status === 'AC')) c.status = 'OK';
+    }
+    result.ok = result.cases.every((c) => c.status === 'AC' || c.status === 'OK');
+    return result;
   }
 
   /**
@@ -448,11 +448,13 @@ export class NuaaOjService implements ProblemPanelHost {
     const language = submissionLanguage(ctx, fileUri.fsPath) || ctx.language || fileLang || '';
     if (!language) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '无法判断语言。' };
     const isCustom = customInput !== undefined;
-    if (isCustom && !String(customInput).trim()) {
-      return { ok: false, language, cases: [], totalTimeMs: 0, skipped: '请输入自定义输入数据。' };
-    }
-    const samples = isCustom ? [{ input: String(customInput), output: '' }] : ctx.samples || [];
-    if (!samples.length) return { ok: false, language, cases: [], totalTimeMs: 0, skipped: '该题没有公开样例，无法云端样例测试。' };
+    // Blank input is allowed (file-IO / no-sample problems); we send a newline placeholder to
+    // satisfy the server's "input not empty" check.
+    const samples = isCustom
+      ? [{ input: String(customInput ?? ''), output: '' }]
+      : ctx.samples.length
+        ? ctx.samples
+        : [{ input: '', output: '' }];
 
     const interval = Math.max(0, vscode.workspace.getConfiguration('nuaaOj').get<number>('cloudTest.intervalMs', 5500));
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -461,6 +463,8 @@ export class NuaaOjService implements ProblemPanelHost {
     let lastSubmit = 0;
 
     const submitWithRetry = async (input: string, expected: string): Promise<string> => {
+      // Server rejects empty userInput; use a newline as the effective "blank" input.
+      const sendInput = input.length === 0 ? '\n' : input;
       let waited = 0;
       for (;;) {
         try {
@@ -468,7 +472,7 @@ export class NuaaOjService implements ProblemPanelHost {
             pid: ctx.pid,
             language,
             code,
-            userInput: input,
+            userInput: sendInput,
             expectedOutput: expected,
             type: 'public',
             isRemoteJudge: false,
@@ -551,9 +555,9 @@ export class NuaaOjService implements ProblemPanelHost {
         8: 'WA',
       };
       let caseStatus: CaseStatus = map[st] || 'RE';
-      // For custom input there is no expected output, so a normal run's verdict (AC/WA/PE/PA)
-      // just means "ran successfully" — label it OK rather than a misleading WA.
-      if (isCustom && [0, -1, -3, 8].includes(st)) caseStatus = 'OK';
+      // No expected output (custom input, or a blank sample) → a clean run is just "OK", not WA.
+      const noExpected = (s.output || '').trim() === '';
+      if ((isCustom || noExpected) && [0, -1, -3, 8].includes(st)) caseStatus = 'OK';
       cases.push({
         index: i + 1,
         input: s.input,
