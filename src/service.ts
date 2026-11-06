@@ -115,6 +115,15 @@ export class NuaaOjService implements ProblemPanelHost {
     return this.auth.api.getSubmissionDetail(submitId);
   }
 
+  async getCaseResults(submitId: number): Promise<any[]> {
+    try {
+      const r = await this.auth.api.getAllCaseResult(submitId);
+      return (r?.judgeCaseList as any[]) || (r?.subTaskJudgeCaseList as any[]) || [];
+    } catch {
+      return [];
+    }
+  }
+
   copyText(text: string): void {
     void vscode.env.clipboard.writeText(text);
     vscode.window.setStatusBarMessage('已复制代码到剪贴板', 2000);

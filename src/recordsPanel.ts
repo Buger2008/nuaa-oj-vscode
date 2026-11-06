@@ -6,6 +6,7 @@ export interface RecordsHost {
   fetchSubmissions(ctx: ProblemContext, onlyMine: boolean): Promise<{ records: any[]; total: number }>;
   getTestHistory(ctx: ProblemContext): Promise<any[]>;
   getSubmissionDetail(submitId: number): Promise<any>;
+  getCaseResults(submitId: number): Promise<any[]>;
   submissionUrl(submitId: number): string;
   openExternal(url: string): void;
   copyText(text: string): void;
@@ -37,6 +38,7 @@ export class RecordsPanel {
 
   private detailId: number | null = null;
   private detail: any = null;
+  private detailCases: any[] = [];
   private detailLoading = false;
   private detailError = '';
 
@@ -119,11 +121,17 @@ export class RecordsPanel {
   private async loadDetail(submitId: number): Promise<void> {
     this.detailId = submitId;
     this.detail = null;
+    this.detailCases = [];
     this.detailError = '';
     this.detailLoading = true;
     this.render();
     try {
-      this.detail = await this.host.getSubmissionDetail(submitId);
+      const [d, cases] = await Promise.all([
+        this.host.getSubmissionDetail(submitId),
+        this.host.getCaseResults(submitId).catch(() => []),
+      ]);
+      this.detail = d;
+      this.detailCases = cases || [];
     } catch (e: any) {
       this.detailError = e?.message ?? String(e);
     }
@@ -175,7 +183,11 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
  pre.code{background:var(--vscode-textCodeBlock-background,rgba(127,127,127,.15));padding:10px;border-radius:6px;overflow:auto;font-family:var(--vscode-editor-font-family,monospace);font-size:12.5px;white-space:pre;}
  .actions{display:flex;gap:8px;margin:14px 0;}
  .actions button{font-family:inherit;font-size:13px;padding:6px 14px;border-radius:4px;cursor:pointer;border:1px solid var(--vscode-button-border,transparent);background:var(--vscode-button-background);color:var(--vscode-button-foreground);}
- .actions button.secondary{background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);}`;
+ .actions button.secondary{background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);}
+ .cases{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;}
+ .case{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px 10px;}
+ .case-head{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
+ .case .cm{font-size:12.5px;} .case .pts{font-size:12px;color:var(--vscode-descriptionForeground);}`;
   }
 
   private renderList(): string {
@@ -245,6 +257,22 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
       } else if (!canView) {
         codeHtml = '<p class="muted">非本人提交（或网站未开放），无法查看代码。</p>';
       }
+      let casesHtml = '';
+      if (this.detailCases.length) {
+        casesHtml =
+          '<h3 style="font-size:14px;margin:16px 0 8px">测试点</h3><div class="cases">' +
+          this.detailCases
+            .map((c, i) => {
+              const cs = statusMeta(c.status);
+              return (
+                `<div class="case"><div class="case-head"><span class="pill" style="background:${cs.color}">${cs.short}</span> <b>Test #${c.seq ?? i + 1}</b></div>` +
+                `<div class="cm">${c.time ?? '-'}ms / ${c.memory ?? '-'} KB</div>` +
+                `<div class="pts">${c.score ?? '-'} pts</div></div>`
+              );
+            })
+            .join('') +
+          '</div>';
+      }
       body =
         `<div class="detail">` +
         `<div><span class="pill" style="background:${st.color}">${st.short}</span> <b>${esc(st.name)}</b></div>` +
@@ -258,6 +286,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
         `<div class="k">提交时间</div><div>${esc(fmtTime(sub.submitTime))}</div>` +
         (sub.errorMessage && sub.status !== 0 ? `<div class="k">信息</div><div>${esc(sub.errorMessage)}</div>` : '') +
         `</div>` +
+        casesHtml +
         codeHtml +
         `<div class="actions"><button data-back="1" class="secondary">← 返回列表</button><button class="secondary" data-open="${esc(url)}">在浏览器打开</button></div>` +
         `</div>`;
