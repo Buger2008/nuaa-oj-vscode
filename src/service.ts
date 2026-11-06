@@ -414,12 +414,20 @@ export class NuaaOjService implements ProblemPanelHost {
     // Make sure unsaved edits are written to disk before compiling.
     await this.saveDocument(fileUri);
     const language = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase()) || ctx.language || '';
+    if (ctx.isFileIO) {
+      return {
+        ok: false,
+        language,
+        cases: [],
+        totalTimeMs: 0,
+        skipped:
+          '该题为文件 IO 题：本地/在线调试都需要输入文件内容。文本文件可在下方「云端自定义测试」里粘贴文件内容运行；二进制文件无法用文本构造，请直接“提交代码”由云端用官方文件评测。',
+      };
+    }
     if (!isLocallyRunnable(language, fileUri.fsPath)) {
       return { ok: false, language, cases: [], totalTimeMs: 0, skipped: `当前语言 ${language} 暂不支持本地运行，请直接提交评测。` };
     }
-    // File-IO problems and problems without samples: still allow a run with blank input.
-    // (For file problems the actual data files come from the judge/cloud; locally this just runs
-    //  with empty stdin so code can still be smoke-tested.)
+    // Problems without samples: still allow a run with blank input (smoke test).
     const samples = ctx.samples.length ? ctx.samples : [{ input: '', output: '' }];
     const result = await runSamples(fileUri.fsPath, language, samples, ctx.timeLimit, await this.runnerConfig(), (m) =>
       this.output.appendLine(`[test] ${m}`),
@@ -448,8 +456,18 @@ export class NuaaOjService implements ProblemPanelHost {
     const language = submissionLanguage(ctx, fileUri.fsPath) || ctx.language || fileLang || '';
     if (!language) return { ok: false, language: '', cases: [], totalTimeMs: 0, skipped: '无法判断语言。' };
     const isCustom = customInput !== undefined;
-    // Blank input is allowed (file-IO / no-sample problems); we send a newline placeholder to
-    // satisfy the server's "input not empty" check.
+    if (ctx.isFileIO && !isCustom) {
+      return {
+        ok: false,
+        language,
+        cases: [],
+        totalTimeMs: 0,
+        skipped:
+          '该题为文件 IO 题：在线调试需提供输入文件内容。请在下方「云端自定义测试」填入文件内容后运行（文本文件适用；二进制文件无法用文本构造，请直接提交）。',
+      };
+    }
+    // Non-custom, no samples → run one blank case. Blank input is sent as a newline placeholder
+    // to satisfy the server's "input not empty" check.
     const samples = isCustom
       ? [{ input: String(customInput ?? ''), output: '' }]
       : ctx.samples.length

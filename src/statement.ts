@@ -77,7 +77,7 @@ export function renderProblemHtml(
     ? `<div class="banner warn">
          <strong>该题为文件 IO 题：</strong>程序需从 <code>${esc(ctx.ioReadFileName || '输入文件')}</code>
          读取、写入 <code>${esc(ctx.ioWriteFileName || '输出文件')}</code>。
-         本地没有官方数据文件，可用空白输入的「用样例测试 / 云端样例测试」做冒烟测试；正式数据请直接“提交代码”由云端评测。
+         本地无官方数据文件；文本文件可在下方「云端自定义测试」粘贴文件内容运行，二进制文件请直接“提交代码”由云端用官方文件评测。
        </div>`
     : '';
 
