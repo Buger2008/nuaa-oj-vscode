@@ -167,7 +167,13 @@ export class ProblemPanel {
         }
         case 'test': {
           if (this.ctx.isFileIO && !(this.ctx.samples && this.ctx.samples.length)) {
-            this.postStatus('该题为文件 IO 题且无样例：已按“提交评测”处理（云端使用官方文件）…');
+            const go = await vscode.window.showWarningMessage(
+              '该题为文件 IO 题且无样例，无法用样例/自定义输入进行测试。\n是否改为「提交评测」？这会创建一次正式提交记录（云端使用官方数据文件评测）。',
+              { modal: true },
+              '提交评测',
+            );
+            if (go !== '提交评测') { this.postStatus('已取消。'); break; }
+            this.postStatus('已按“提交评测”处理（云端使用官方文件）…');
             const final = await this.host.submit(this.ctx, (t) => this.postStatus(t));
             if (final) this.postSubmitResult(final);
             break;
@@ -180,7 +186,13 @@ export class ProblemPanel {
         case 'cloudTest':
         case 'cloudTestCustom': {
           if (this.ctx.isFileIO && !(this.ctx.samples && this.ctx.samples.length)) {
-            this.postStatus('该题为文件 IO 题且无样例：已按“提交评测”处理（云端使用官方文件）…');
+            const go = await vscode.window.showWarningMessage(
+              '该题为文件 IO 题且无样例，无法用样例/自定义输入进行测试。\n是否改为「提交评测」？这会创建一次正式提交记录（云端使用官方数据文件评测）。',
+              { modal: true },
+              '提交评测',
+            );
+            if (go !== '提交评测') { this.postStatus('已取消。'); break; }
+            this.postStatus('已按“提交评测”处理（云端使用官方文件）…');
             const final = await this.host.submit(this.ctx, (t) => this.postStatus(t));
             if (final) this.postSubmitResult(final);
             break;
