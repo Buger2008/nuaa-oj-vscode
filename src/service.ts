@@ -1090,6 +1090,9 @@ export class NuaaOjService implements ProblemPanelHost {
     }
 
     this.onDataChanged();
+    // The OJ status tables can lag a moment behind the judge result; refresh again shortly
+    // so AC flags in the sidebar update without the user re-clicking the tab.
+    setTimeout(() => this.onDataChanged(), 2500);
     // For Accepted submissions the OJ returns a placeholder errorMessage ("does not support viewing");
     // don't show that as "评测信息".
     const errorMessage = meta.short === 'AC' ? undefined : last.errorMessage || undefined;

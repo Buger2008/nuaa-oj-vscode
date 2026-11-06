@@ -662,6 +662,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    }
    inp.addEventListener('input',()=>paint(inp.value.trim()));
    paint('');
+   if(reopenTrainingTids.length){
+     const tids = reopenTrainingTids.slice(); reopenTrainingTids = [];
+     tids.forEach(function(tid){
+       const kids = window.__trainingBoxes[tid];
+       if(kids){ kids.style.display='block'; kids.dataset.loaded='1'; kids.innerHTML='<div class="muted">加载中…</div>'; vscode.postMessage({type:'expandTraining', tid:Number(tid)}); }
+     });
+   }
  }
  // 作业
  function renderHomework(data){
@@ -708,6 +715,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  // 我的
  let rankChartType = 'bar';
  let statusMode = 'formal';
+ let reopenTrainingTids = [];
  let lastRankData = null, lastRankFilters = null;
  function rankLegend(kind){ return kind==='acm' ? '<div class="rlegend"><span style="color:#0a84ff">■ AC</span> <span style="color:#909399">■ Total</span></div>' : '<div class="rlegend"><span style="color:#8b5cf6">■ Score</span></div>'; }
  function barSpan(v,max,color){ const w=Math.max(2,Math.round(v/max*100)); return '<div class="rbarwrap"><div class="rbar" style="width:'+w+'%;background:'+color+'"></div><span class="rbarval">'+v+'</span></div>'; }
@@ -920,7 +928,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
-   else if(m.type==='reload'){ vscode.postMessage({type:'tab',tab:activeTab}); }
+   else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab}); }
    else if(m.type==='focusSearch'){ const i=document.querySelector('input.search'); if(i) i.focus(); }
    else if(m.type==='error'){ error(m.text); }
  });
