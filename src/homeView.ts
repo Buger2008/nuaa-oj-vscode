@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { AuthManager } from './auth';
 import { UserInfo } from './types';
+import { statusMeta } from './status';
 
 export interface HomeCallbacks {
   openProblem: (value: string) => Promise<void>;
   openLogin: () => void;
   logout: () => Promise<void>;
+  openUrl: (url: string) => void;
   onChange?: () => void;
 }
 
@@ -103,6 +105,12 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'expandTraining':
         await this.sendTrainingProblems(Number(m.tid));
         break;
+      case 'status':
+        await this.sendStatus(m);
+        break;
+      case 'openUrl':
+        this.cb.openUrl(String(m.url));
+        break;
       case 'openProblem':
         await this.cb.openProblem(String(m.value));
         break;
@@ -132,6 +140,49 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       this.view.webview.postMessage({ type: 'data', tab: 'homework', payload: data });
     } else if (tab === 'my') {
       this.view.webview.postMessage({ type: 'data', tab: 'my', payload: this.userBrief(this.auth.currentUser) });
+    } else if (tab === 'status') {
+      await this.sendStatus({ onlyMine: false, status: '' });
+    }
+  }
+
+  private baseUrl(): string {
+    return vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
+  }
+
+  private async sendStatus(f: any): Promise<void> {
+    if (!this.view) return;
+    const filters = { onlyMine: !!f?.onlyMine, status: f?.status ?? '' };
+    if (!(await this.auth.ensureLoggedIn(false))) {
+      this.view.webview.postMessage({ type: 'status', payload: { needLogin: true, items: [], total: 0 }, filters });
+      return;
+    }
+    try {
+      const res = await this.auth.api.getSubmissionList({
+        limit: 50,
+        currentPage: 1,
+        onlyMine: filters.onlyMine,
+        status: filters.status === '' || filters.status == null ? undefined : Number(filters.status),
+      });
+      const items = (res.records || []).map((r: any) => {
+        const st = statusMeta(r.status);
+        return {
+          submitId: r.submitId,
+          username: r.username,
+          displayPid: r.displayPid ?? r.pid,
+          title: r.title,
+          statusShort: st.short,
+          statusName: st.name,
+          statusColor: st.color,
+          time: r.time,
+          memory: r.memory,
+          language: r.language,
+          submitTime: r.submitTime,
+          url: `${this.baseUrl()}/submission-detail/${r.submitId}`,
+        };
+      });
+      this.view.webview.postMessage({ type: 'status', payload: { items, total: res.total || 0 }, filters });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'status', payload: { error: e?.message ?? String(e), items: [], total: 0 }, filters });
     }
   }
 
@@ -287,11 +338,21 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .btn{font-family:inherit;font-size:12.5px;padding:5px 12px;border-radius:4px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;margin-top:10px;}
  .err{color:#f56c6c;padding:8px;}
  .empty{padding:14px;color:var(--vscode-descriptionForeground);}
+ .filters{display:flex;gap:8px;align-items:center;margin:2px 0 8px;flex-wrap:wrap;}
+ .filters select{font-family:inherit;font-size:12px;padding:3px 6px;border-radius:4px;background:var(--vscode-dropdown-background);color:var(--vscode-dropdown-foreground);border:1px solid var(--vscode-dropdown-border,var(--vscode-panel-border));}
+ .filters label{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:var(--vscode-descriptionForeground);}
+ table{border-collapse:collapse;width:100%;font-size:12px;}
+ th,td{border-bottom:1px solid var(--vscode-panel-border);padding:5px 4px;text-align:left;white-space:nowrap;}
+ th{position:sticky;top:0;background:inherit;}
+ tr:hover{background:rgba(127,127,127,.12);}
+ a.runid{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
+ .pill{display:inline-block;color:#fff;border-radius:8px;padding:0 6px;font-size:10.5px;font-weight:700;}
 </style></head><body>
 <div class="tabs">
  <button class="tab active" data-tab="problems">自由练习</button>
  <button class="tab" data-tab="trainings">课内实验</button>
  <button class="tab" data-tab="homework">作业</button>
+ <button class="tab" data-tab="status">状态</button>
  <button class="tab" data-tab="my">我的</button>
 </div>
 <div class="body" id="content"><div class="empty">加载中…</div></div>
@@ -375,7 +436,45 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    content.appendChild(card);
  }
 
+ // 我的
+ function renderStatus(data, filters){
+   content.innerHTML='';
+   if(data.needLogin){ needLogin(); return; }
+   const bar=el('div','filters');
+   const sel=document.createElement('select');
+   const opts=[['','全部状态'],['0','AC'],['-1','WA'],['1','TLE'],['2','MLE'],['3','RE'],['-2','CE'],['-3','PE'],['4','SE'],['8','PA']];
+   opts.forEach(function(pair){ const o=document.createElement('option'); o.value=pair[0]; o.textContent=pair[1]; sel.appendChild(o); });
+   sel.value=(filters&&filters.status!=null)?String(filters.status):'';
+   const chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!!(filters&&filters.onlyMine);
+   function fire(){ vscode.postMessage({type:'status', onlyMine:chk.checked, status:sel.value}); }
+   sel.addEventListener('change',fire); chk.addEventListener('change',fire);
+   const lab=el('label',''); lab.appendChild(chk); lab.appendChild(document.createTextNode('只看我的'));
+   bar.appendChild(sel); bar.appendChild(lab); content.appendChild(bar);
+   if(data.error){ error(data.error); return; }
+   const items=data.items||[];
+   if(!items.length){ content.appendChild(el('div','empty','没有匹配的提交。')); return; }
+   const tbl=document.createElement('table');
+   const thead=document.createElement('thead'); const hr=document.createElement('tr');
+   ['RUNID','用户','题目','状态','时间','内存','语言','提交时间'].forEach(function(h){ hr.appendChild(el('th','',h)); }); thead.appendChild(hr); tbl.appendChild(thead);
+   const tb=document.createElement('tbody');
+   items.forEach(function(r){
+     const tr=document.createElement('tr');
+     const td0=el('td'); const a=el('a','runid','#'+r.submitId); a.href='#'; a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUrl',url:r.url}); }); td0.appendChild(a); tr.appendChild(td0);
+     tr.appendChild(el('td','',r.username||''));
+     tr.appendChild(el('td','',(r.displayPid||'')+' '+(r.title||'')));
+     const tdst=el('td'); const pill=el('span','pill',r.statusShort); pill.style.background=r.statusColor; tdst.appendChild(pill); tdst.appendChild(document.createTextNode(' '+r.statusName)); tr.appendChild(tdst);
+     tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
+     tr.appendChild(el('td','',(r.memory==null?'-':r.memory)+' KB'));
+     tr.appendChild(el('td','',r.language||''));
+     tr.appendChild(el('td','',r.submitTime? new Date(r.submitTime).toLocaleString():''));
+     tb.appendChild(tr);
+   });
+   tbl.appendChild(tb); content.appendChild(tbl);
+   content.appendChild(el('div','muted','共 '+data.total+' 条（显示前 50 条）'));
+ }
+
  window.addEventListener('message',(e)=>{ const m=e.data;
+   if(m.type==='status'){ renderStatus(m.payload, m.filters); return; }
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }

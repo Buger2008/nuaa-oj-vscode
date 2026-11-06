@@ -71,6 +71,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       updateStatusBar();
       homeProvider.refresh();
     },
+    openUrl: (url: string) => void vscode.env.openExternal(vscode.Uri.parse(url)),
     onChange: refreshAll,
   });
 
