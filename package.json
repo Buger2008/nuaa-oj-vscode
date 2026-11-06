@@ -5,11 +5,18 @@
   "version": "1.10.3",
   "publisher": "buger",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/buger2008/nuaa-oj-vscode"
+  },
+  "homepage": "https://gitee.com/buger2008/nuaa-oj-vscode",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "OJ",
+    "Programming Languages",
+    "Testing"
   ],
   "keywords": [
     "oj",
