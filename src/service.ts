@@ -9,6 +9,7 @@ import { SettingsPanel } from './settingsPanel';
 import { UserHomePanel } from './userHomePanel';
 import { MessagesPanel } from './messagesPanel';
 import { LearningPanel } from './learningPanel';
+import { LearningMapPanel } from './learningMapPanel';
 import {
   ProblemContext,
   buildContext,
@@ -306,6 +307,11 @@ export class NuaaOjService implements ProblemPanelHost {
   async openLearning(): Promise<void> {
     if (!(await this.auth.ensureLoggedIn())) return;
     await LearningPanel.show(this, this.extensionUri);
+  }
+
+  async openLearningMap(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await LearningMapPanel.show(this, this.extensionUri);
   }
 
   // ---- Settings: profile / account -----------------------------------------

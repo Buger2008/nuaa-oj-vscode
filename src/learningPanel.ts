@@ -4,6 +4,7 @@ export interface LearningHost {
   data(): Promise<any>;
   openAssistantGeneral(): void;
   openProfile(): void;
+  openLearningMap(): void;
 }
 
 function esc(s: any): string {
@@ -39,6 +40,7 @@ export class LearningPanel {
       else if (m?.type === 'refresh') await this.load();
       else if (m?.type === 'openAssistant') this.host.openAssistantGeneral();
       else if (m?.type === 'openProfile') this.host.openProfile();
+      else if (m?.type === 'openMap') this.host.openLearningMap();
     }, null, this.disposables);
   }
 
@@ -70,6 +72,14 @@ export class LearningPanel {
  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:6px 0 4px;}
  .card{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:10px;}
  .card .n{font-size:20px;font-weight:700;} .card .l{font-size:12px;color:var(--vscode-descriptionForeground);}
+ .card .s{font-size:11.5px;color:var(--vscode-descriptionForeground);margin-top:2px;}
+ .card small{font-size:12px;font-weight:400;}
+ .hero{border-radius:10px;padding:18px 20px;margin:4px 0 12px;background:linear-gradient(135deg,#0f2f5c,#0a5f73);color:#fff;}
+ .hero-title{font-size:20px;font-weight:700;margin-bottom:6px;} .hero-sub{font-size:12.5px;color:rgba(255,255,255,.75);}
+ .menu{border:1px solid var(--vscode-panel-border);border-radius:8px;overflow:hidden;}
+ .mrow{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--vscode-panel-border);}
+ .mrow:last-child{border-bottom:none;} .mrow:hover{background:rgba(127,127,127,.12);}
+ .mi{width:22px;text-align:center;} .mt{font-size:13.5px;font-weight:600;} .ms{flex:1;font-size:12px;color:var(--vscode-descriptionForeground);} .mc{color:var(--vscode-descriptionForeground);}
  .chart{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px 10px;margin-bottom:10px;}
  .row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px;}
  .row .name{width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -103,39 +113,35 @@ export class LearningPanel {
    const ov=data&&data.overview; const map=ov&&ov.map; if(!map){ root.innerHTML='<p class="muted">暂无学习数据</p>'; return; }
    const course=map.course||{}; const stages=map.stages||[]; const prog=map.student_progress||{};
    sub.textContent=(course.course_name||'')+(course.current_topic_label?(' · 当前进度：'+course.current_topic_label):'');
-   const accessible=stages.filter(function(s){return s.accessible;}).length;
-   const weak=ov&&ov.weak_point_count!=null?ov.weak_point_count:'-';
-   const rec=ov&&ov.recommendation_count!=null?ov.recommendation_count:'-';
-   let h='<h2>概览</h2><div class="cards">';
-   h+='<div class="card"><div class="n">'+esc(course.current_topic_label||'-')+'</div><div class="l">当前进度</div></div>';
-   h+='<div class="card"><div class="n">'+accessible+' / '+stages.length+'</div><div class="l">已解锁知识点</div></div>';
-   h+='<div class="card"><div class="n">'+esc(weak)+'</div><div class="l">薄弱知识点</div></div>';
-   h+='<div class="card"><div class="n">'+esc(rec)+'</div><div class="l">推荐资源</div></div>';
+   function flat(ns,out){ ns.forEach(function(n){ out.push(n); if(Array.isArray(n.children)&&n.children.length) flat(n.children,out); }); return out; }
+   const allKp=flat(stages,[]);
+   const unlocked=allKp.filter(function(n){return n.accessible;}).length;
+   const locked=allKp.length-unlocked;
+   const weak=ov&&ov.weak_point_count!=null?ov.weak_point_count:0;
+   const rec=ov&&ov.recommendation_count!=null?ov.recommendation_count:0;
+   let h='';
+   h+='<div class="hero"><div class="hero-title">发现 '+esc(weak)+' 个可提升的知识点，一起把它们补上</div><div class="hero-sub">当前进度 · '+esc(course.current_topic_label||'-')+'</div></div>';
+   h+='<h2>概览</h2><div class="cards">';
+   h+='<div class="card"><div class="n">'+unlocked+' <small>个</small></div><div class="l">已解锁知识点</div><div class="s">学习地图中已开放</div></div>';
+   h+='<div class="card"><div class="n">'+locked+' <small>个</small></div><div class="l">待解锁知识点</div><div class="s">完成前置后开放</div></div>';
+   h+='<div class="card"><div class="n">'+esc(rec)+' <small>道</small></div><div class="l">推荐题目</div><div class="s">按薄弱点生成</div></div>';
+   h+='<div class="card"><div class="n">'+esc(weak)+' <small>项</small></div><div class="l">薄弱知识点</div><div class="s">建议优先攻克</div></div>';
    h+='</div>';
-   // 学习地图：按教学顺序的掌握度条形图
-   h+='<h2>学习地图 · 掌握度</h2><div class="chart">';
-   stages.forEach(function(s){
-     const p=prog[s.name]||{}; const pass=Number(p.homework_pass)||0, total=Number(p.homework_total)||0;
-     const pct= total? Math.round(pass/total*100) : 0;
-     const color=s.accessible? '#0a84ff' : '#909399';
-     h+='<div class="row"><span class="name" title="'+esc(s.label)+'">'+esc(s.label)+'</span><div class="bar"><i style="width:'+pct+'%;background:'+color+'"></i></div><span class="v">'+pct+'%</span></div>';
-   });
+   h+='<h2>功能</h2><div class="menu">';
+   h+='<div class="mrow" data-act="map"><span class="mi">🗺</span><span class="mt">学习地图</span><span class="ms">知识点掌握与解锁情况</span><span class="mc">›</span></div>';
+   h+='<div class="mrow" data-act="rec"><span class="mi">⭐</span><span class="mt">推荐学习资源</span><span class="ms">暂未开发</span><span class="mc">›</span></div>';
+   h+='<div class="mrow" data-act="ai"><span class="mi">🤖</span><span class="mt">叽咕助教</span><span class="mc">›</span></div>';
+   h+='<div class="mrow" data-act="profile"><span class="mi">📊</span><span class="mt">能力画像</span><span class="mc">›</span></div>';
    h+='</div>';
-   // 知识点列表（可展开）
-   h+='<h2>知识点</h2>';
-   stages.forEach(function(s){
-     const p=prog[s.name]||{}; const total=Number(p.homework_total)||0, pass=Number(p.homework_pass)||0;
-     h+='<details class="kp"><summary><span class="tag '+(s.accessible?'open':'lock')+'">'+(s.accessible?'已解锁':'未解锁')+'</span><span style="flex:1;font-weight:600">'+esc(s.label)+'</span><span class="muted">作业 '+pass+'/'+total+'</span></summary><div style="padding:6px 0 0 24px">';
-     const children=Array.isArray(s.children)?s.children:[];
-     if(!children.length){ h+='<div class="muted">暂无子知识点</div>'; }
-     children.forEach(function(c){
-       const cp=prog[c.name]||{}; const ct=Number(cp.homework_total)||0, cpass=Number(cp.homework_pass)||0;
-       h+='<div class="row"><span class="name" style="width:150px">'+esc(c.label)+'</span><div class="bar"><i style="width:'+(ct?Math.round(cpass/ct*100):0)+'%;background:'+(c.accessible?'#67c23a':'#909399')+'"></i></div><span class="v">'+(ct?Math.round(cpass/ct*100):0)+'%</span></div>';
-     });
-     h+='</div></details>';
-   });
-   h+='<div class="notice">推荐学习资源暂未开发。</div>';
    root.innerHTML=h;
+   root.querySelectorAll('.mrow').forEach(function(el){
+     el.addEventListener('click',function(){
+       var a=el.getAttribute('data-act');
+       if(a==='map') vscode.postMessage({type:'openMap'});
+       else if(a==='ai') vscode.postMessage({type:'openAssistant'});
+       else if(a==='profile') vscode.postMessage({type:'openProfile'});
+     });
+   });
  }
  window.addEventListener('message',function(e){ const m=e.data;
    if(m.type==='data'){ render(m.data); }
