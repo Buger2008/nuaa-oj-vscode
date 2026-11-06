@@ -124,6 +124,77 @@ export class NuaaOjService implements ProblemPanelHost {
     }
   }
 
+  /** Load a submission's own code and write it into the solution file (with confirmation). */
+  async applySubmission(ctx: ProblemContext, submitId: number): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    let d: any;
+    try {
+      d = await this.auth.api.getSubmissionDetail(submitId);
+    } catch (e: any) {
+      vscode.window.showWarningMessage(`获取提交代码失败：${e?.message ?? e}`);
+      return;
+    }
+    const code = d?.submission?.code || '';
+    if (!d?.canViewCode || !String(code).trim()) {
+      vscode.window.showWarningMessage('该提交的代码不可查看，无法覆盖到源文件。');
+      return;
+    }
+    const res = await this.applyCodeToSolution(ctx, String(code), d.submission.language || '');
+    if (res.ok) vscode.window.showInformationMessage(res.message || '已覆盖到源文件。');
+    else if (!res.cancelled) vscode.window.showWarningMessage(res.message || '覆盖失败。');
+  }
+
+  /** Write `code` into the solution file for `language` (switch file if the language differs), after confirm. */
+  async applyCodeToSolution(
+    ctx: ProblemContext,
+    code: string,
+    language: string,
+  ): Promise<{ ok: boolean; message?: string; cancelled?: boolean; fileName?: string; language?: string; switched?: boolean }> {
+    let fileUri = await this.getSolutionUri(ctx);
+    if (!fileUri) return { ok: false, message: '未找到对应的代码文件。' };
+    const currentLang = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase());
+    const targetLang = language || currentLang || '';
+    let switched = false;
+
+    if (targetLang && currentLang && targetLang !== currentLang) {
+      if (ctx.allowedLanguages && ctx.allowedLanguages.length && !ctx.allowedLanguages.includes(targetLang)) {
+        return { ok: false, message: `该提交语言「${targetLang}」不在本题允许的语言内。` };
+      }
+      const targetName = `${ctx.displayId}${languageToExtension(targetLang)}`;
+      const go = await vscode.window.showWarningMessage(
+        `该提交使用「${targetLang}」，与当前文件语言「${currentLang}」不同。\n将切换到「${targetName}」并用该提交代码覆盖它，确定吗？`,
+        { modal: true },
+        '切换并覆盖',
+      );
+      if (go !== '切换并覆盖') return { ok: false, cancelled: true };
+      const sw = await this.changeLanguageAndCreateFile(ctx, targetLang);
+      if (!sw.ok) return { ok: false, message: sw.message || '切换语言失败。' };
+      fileUri = (await this.getSolutionUri(ctx)) || fileUri;
+      switched = true;
+    } else {
+      const name = path.basename(fileUri.fsPath);
+      const go = await vscode.window.showWarningMessage(
+        `将用该提交的代码覆盖当前文件「${name}」${targetLang ? `（语言：${targetLang}）` : ''}。现有内容会被替换，确定吗？`,
+        { modal: true },
+        '覆盖',
+      );
+      if (go !== '覆盖') return { ok: false, cancelled: true };
+    }
+
+    await this.saveDocument(fileUri);
+    try {
+      const doc = await vscode.workspace.openTextDocument(fileUri);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), code);
+      if (await vscode.workspace.applyEdit(edit)) await doc.save();
+      await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
+    } catch (e: any) {
+      return { ok: false, message: `写入文件失败：${e?.message ?? e}` };
+    }
+    const fileName = path.basename(fileUri.fsPath);
+    return { ok: true, message: switched ? `已切换到 ${targetLang} 并写入该提交代码「${fileName}」。` : `已把该提交代码写入「${fileName}」。`, fileName, language: targetLang, switched };
+  }
+
   copyText(text: string): void {
     void vscode.env.clipboard.writeText(text);
     vscode.window.setStatusBarMessage('已复制代码到剪贴板', 2000);

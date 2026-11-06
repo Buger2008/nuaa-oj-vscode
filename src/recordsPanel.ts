@@ -7,6 +7,7 @@ export interface RecordsHost {
   getTestHistory(ctx: ProblemContext): Promise<any[]>;
   getSubmissionDetail(submitId: number): Promise<any>;
   getCaseResults(submitId: number): Promise<any[]>;
+  applySubmission(ctx: ProblemContext, submitId: number): Promise<void>;
   submissionUrl(submitId: number): string;
   openExternal(url: string): void;
   copyText(text: string): void;
@@ -91,6 +92,7 @@ export class RecordsPanel {
         else if (m?.type === 'detail') await this.loadDetail(Number(m.submitId));
         else if (m?.type === 'back') { this.detailId = null; this.detail = null; this.render(); }
         else if (m?.type === 'copyCode') this.host.copyText(String(m.code ?? ''));
+        else if (m?.type === 'apply') await this.host.applySubmission(this.ctx, Number(m.submitId));
       },
       null,
       this.disposables,
@@ -155,6 +157,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
  document.querySelectorAll('[data-back]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'back'})));
  document.querySelectorAll('[data-copy]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'copyCode',code:b.getAttribute('data-copy')})));
  document.querySelectorAll('[data-open]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'open',url:b.getAttribute('data-open')})));
+ document.querySelectorAll('[data-apply]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'apply',submitId:b.getAttribute('data-apply')})));
 </script></body></html>`;
   }
 
@@ -250,7 +253,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
       let codeHtml = '';
       if (canView && code && !hidden) {
         codeHtml =
-          `<div class="actions"><button data-copy="${esc(code)}">复制代码</button></div>` +
+          `<div class="actions"><button data-copy="${esc(code)}">复制代码</button><button class="secondary" data-apply="${sub.submitId ?? sid}">覆盖到源文件</button></div>` +
           `<pre class="code">${esc(code)}</pre>`;
       } else if (hidden) {
         codeHtml = '<p class="muted">该提交的代码被网站设置为隐藏，无法查看。</p>';
