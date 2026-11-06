@@ -462,4 +462,38 @@ export class OjApi {
   async adviceMethodStream(username: string, onEvent: (ev: any) => void, signal?: AbortSignal): Promise<void> {
     return this.streamGet(`/recommendation-api/student/${encodeURIComponent(username)}/advice/method/stream`, onEvent, signal);
   }
+
+  // ---- Settings: profile / account -----------------------------------------
+  async changeUserInfo(body: any): Promise<any> {
+    return this.request('/api/change-userInfo', { method: 'POST', body });
+  }
+  async changePassword(oldPassword: string, newPassword: string): Promise<any> {
+    return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
+  }
+  async getChangeEmailCode(email: string): Promise<any> {
+    return this.request('/api/get-change-email-code', { query: { email } });
+  }
+  async changeEmail(password: string, newEmail: string, code: string): Promise<any> {
+    return this.request('/api/change-email', { method: 'POST', body: { password, newEmail, code } });
+  }
+  async uploadAvatar(buf: Buffer, mime: string, filename: string): Promise<any> {
+    const url = this.buildUrl('/api/file/upload-avatar');
+    const token = this.getToken ? await this.getToken() : undefined;
+    const form = new FormData();
+    form.append('image', new Blob([new Uint8Array(buf)], { type: mime || 'image/png' }), filename || 'avatar.png');
+    const headers: Record<string, string> = { 'Url-Type': 'general' };
+    if (token) headers['Authorization'] = token;
+    const res = await fetch(url, { method: 'POST', headers, body: form as any });
+    const text = await res.text();
+    let json: any;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new OjError('头像上传返回非 JSON。', res.status);
+    }
+    if (!res.ok || (typeof json.status === 'number' && json.status !== 200)) {
+      throw new OjError(json.msg || `头像上传失败（HTTP ${res.status}）`, res.status);
+    }
+    return json.data;
+  }
 }

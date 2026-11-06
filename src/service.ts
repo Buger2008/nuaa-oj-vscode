@@ -5,6 +5,7 @@ import { OjError } from './api';
 import { RecordsPanel } from './recordsPanel';
 import { AssistantPanel } from './assistantPanel';
 import { ProfilePanel } from './profilePanel';
+import { SettingsPanel } from './settingsPanel';
 import {
   ProblemContext,
   buildContext,
@@ -273,6 +274,87 @@ export class NuaaOjService implements ProblemPanelHost {
   async openProfile(): Promise<void> {
     if (!(await this.auth.ensureLoggedIn())) return;
     await ProfilePanel.show(this, this.extensionUri);
+  }
+
+  // ---- Settings: profile / account -----------------------------------------
+  private settingsInfo(): any {
+    const u: any = this.auth.currentUser;
+    if (!u) return null;
+    return {
+      username: u.username,
+      email: u.email,
+      avatar: u.avatar,
+      realname: u.realname,
+      nickname: u.nickname,
+      school: u.school,
+      number: u.number,
+      cfUsername: u.cfUsername,
+      blog: u.blog,
+      github: u.github,
+      gender: u.gender,
+      signature: u.signature,
+    };
+  }
+
+  private applyUserInfo(vo: any): void {
+    const u: any = this.auth.currentUser;
+    if (!u || !vo || typeof vo !== 'object') return;
+    for (const k of ['nickname', 'avatar', 'email', 'number', 'gender', 'school', 'signature', 'realname', 'github', 'blog', 'cfUsername']) {
+      if (vo[k] !== undefined && vo[k] !== null) u[k] = vo[k];
+    }
+  }
+
+  getInfo(): any {
+    return this.settingsInfo();
+  }
+
+  async saveInfo(fields: any): Promise<any> {
+    const clean: any = {};
+    for (const k of Object.keys(fields || {})) {
+      const v = fields[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') clean[k] = v;
+    }
+    if (!clean.gender) clean.gender = 'secrecy';
+    const vo = await this.auth.api.changeUserInfo(clean);
+    this.applyUserInfo(vo);
+    this.onDataChanged();
+    return this.settingsInfo();
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<any> {
+    return this.auth.api.changePassword(oldPassword, newPassword);
+  }
+
+  async sendEmailCode(email: string): Promise<any> {
+    return this.auth.api.getChangeEmailCode(email);
+  }
+
+  async changeEmail(password: string, newEmail: string, code: string): Promise<any> {
+    const vo = await this.auth.api.changeEmail(password, newEmail, code);
+    this.applyUserInfo(vo);
+    this.onDataChanged();
+    return this.settingsInfo();
+  }
+
+  async uploadAvatar(dataUrl: string): Promise<any> {
+    const m = /^data:([^;]+);base64,(.*)$/s.exec(String(dataUrl || ''));
+    if (!m) throw new OjError('头像数据无效。');
+    const mime = m[1];
+    const ext = (mime.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    const buf = Buffer.from(m[2], 'base64');
+    const r = await this.auth.api.uploadAvatar(buf, mime, `avatar.${ext}`);
+    if (r && typeof r === 'object') {
+      this.applyUserInfo(r);
+      this.onDataChanged();
+      if ((r as any).avatar) return (r as any).avatar;
+    }
+    if (typeof r === 'string') return r;
+    return (this.auth.currentUser as any)?.avatar;
+  }
+
+  async openSettings(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await SettingsPanel.show(this, this.extensionUri);
   }
 
   private base(): string {

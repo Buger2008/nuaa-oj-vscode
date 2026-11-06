@@ -73,6 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
     openUrl: (url: string) => void vscode.env.openExternal(vscode.Uri.parse(url)),
     openProfile: () => void service.openProfile(),
+    openSettings: () => void service.openSettings(),
     onChange: refreshAll,
   });
 
