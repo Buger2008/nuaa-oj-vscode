@@ -111,6 +111,15 @@ export class NuaaOjService implements ProblemPanelHost {
     return this.testHistory.get(this.historyKey(ctx)) || [];
   }
 
+  async getSubmissionDetail(submitId: number): Promise<any> {
+    return this.auth.api.getSubmissionDetail(submitId);
+  }
+
+  copyText(text: string): void {
+    void vscode.env.clipboard.writeText(text);
+    vscode.window.setStatusBarMessage('已复制代码到剪贴板', 2000);
+  }
+
   submissionUrl(submitId: number): string {
     return `${this.base()}/submission-detail/${submitId}`;
   }
