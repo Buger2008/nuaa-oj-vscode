@@ -110,6 +110,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'status':
         await this.sendStatus(m);
         break;
+      case 'rank':
+        await this.sendRank(m);
+        break;
       case 'openUrl':
         this.cb.openUrl(String(m.url));
         break;
@@ -150,6 +153,41 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       this.view.webview.postMessage({ type: 'data', tab: 'my', payload: this.userBrief(this.auth.currentUser) });
     } else if (tab === 'status') {
       await this.sendStatus({ onlyMine: false, status: '' });
+    } else if (tab === 'rank') {
+      await this.sendRank({ kind: 'acm', page: 1, size: 30, search: '' });
+    }
+  }
+
+  private async sendRank(f: any): Promise<void> {
+    if (!this.view) return;
+    const kind = f?.kind === 'oi' ? 'oi' : 'acm';
+    const page = Math.max(1, Number(f?.page) || 1);
+    const size = [15, 30, 50, 100].includes(Number(f?.size)) ? Number(f?.size) : 30;
+    const search = String(f?.search ?? '').trim();
+    const filters = { kind, page, size, search };
+    if (!(await this.auth.ensureLoggedIn(false))) {
+      this.view.webview.postMessage({ type: 'rank', payload: { needLogin: true, items: [], total: 0, page, size, pages: 0 }, filters });
+      return;
+    }
+    try {
+      const res = await this.auth.api.getUserRank({ limit: size, currentPage: page, type: kind === 'oi' ? 1 : 0, searchUser: search || undefined });
+      const offset = size * (page - 1);
+      const items = (res.records || []).map((r: any, i: number) => ({
+        rank: offset + i + 1,
+        username: r.username,
+        nickname: r.nickname,
+        signature: r.signature,
+        titleName: r.titleName,
+        titleColor: r.titleColor,
+        ac: r.ac,
+        total: r.total,
+        score: r.score,
+      }));
+      const total = res.total || 0;
+      const pages = (res as any).pages || Math.max(1, Math.ceil(total / size));
+      this.view.webview.postMessage({ type: 'rank', payload: { items, total, page, size, pages }, filters });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'rank', payload: { error: e?.message ?? String(e), items: [], total: 0, page, size, pages: 0 }, filters });
     }
   }
 
@@ -367,12 +405,20 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .pg.active{background:#0a84ff;border-color:#0a84ff;color:#fff;font-weight:700;}
  .pg:disabled{opacity:.4;cursor:default;}
  .pgdots{padding:0 2px;color:var(--vscode-descriptionForeground);}
+ .rchart{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px 10px;margin-bottom:8px;}
+ .rrow{display:flex;gap:6px;align-items:center;margin:3px 0;font-size:11.5px;}
+ .rname{width:68px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--vscode-descriptionForeground);}
+ .rbars{flex:1;display:flex;gap:6px;align-items:center;}
+ .rbarwrap{flex:1;display:flex;align-items:center;gap:4px;}
+ .rbar{height:9px;border-radius:4px;flex:none;}
+ .rbarval{font-size:10px;color:var(--vscode-descriptionForeground);}
 </style></head><body>
 <div class="tabs">
  <button class="tab active" data-tab="problems">自由练习</button>
  <button class="tab" data-tab="trainings">课内实验</button>
  <button class="tab" data-tab="homework">作业</button>
  <button class="tab" data-tab="status">状态</button>
+ <button class="tab" data-tab="rank">排名</button>
  <button class="tab" data-tab="my">我的</button>
 </div>
 <div class="body" id="content"><div class="empty">加载中…</div></div>
@@ -459,6 +505,65 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  }
 
  // 我的
+ function makeBar(kind,val,max,color){ const w=Math.max(2, Math.round(val/max*100)); const b=el('div','rbar'); b.style.width=w+'%'; b.style.background=color; b.title=kind+': '+val; const wrap=el('div','rbarwrap'); wrap.appendChild(b); const lab=el('span','rbarval',String(val)); wrap.appendChild(lab); return wrap; }
+ function renderRank(data, filters){
+   content.innerHTML='';
+   if(data.needLogin){ needLogin(); return; }
+   const f={ kind:(filters&&filters.kind)==='oi'?'oi':'acm', page:(data&&data.page)||1, size:(data&&data.size)||30, search:(filters&&filters.search)||'' };
+   function fire(){ vscode.postMessage({type:'rank', kind:f.kind, page:f.page, size:f.size, search:f.search}); }
+   const bar=el('div','filters');
+   const bA=el('button','tab'+(f.kind==='acm'?' active':''),'ACM'); const bO=el('button','tab'+(f.kind==='oi'?' active':''),'OI');
+   bA.addEventListener('click',function(){ f.kind='acm'; f.page=1; fire(); });
+   bO.addEventListener('click',function(){ f.kind='oi'; f.page=1; fire(); });
+   const inp=el('input','search'); inp.placeholder='搜索用户名/昵称/真名'; inp.value=f.search; inp.style.marginBottom='0'; inp.style.flex='1'; inp.style.width='auto';
+   inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ f.search=inp.value.trim(); f.page=1; fire(); } });
+   const sizeSel=document.createElement('select'); [15,30,50,100].forEach(function(n){ var o=document.createElement('option'); o.value=String(n); o.textContent=n+'条/页'; sizeSel.appendChild(o); }); sizeSel.value=String(f.size);
+   sizeSel.addEventListener('change',function(){ f.size=Number(sizeSel.value); f.page=1; fire(); });
+   bar.appendChild(bA); bar.appendChild(bO); bar.appendChild(inp); bar.appendChild(sizeSel); content.appendChild(bar);
+   if(data.error){ error(data.error); return; }
+   const items=data.items||[];
+   if(!items.length){ content.appendChild(el('div','empty','没有匹配的排名。')); return; }
+   const top=items.slice(0,10);
+   const maxV=Math.max.apply(null, top.map(function(r){ return Math.max(r.ac||0, r.total||0, r.score||0); }).concat([1]));
+   const chart=el('div','rchart');
+   top.forEach(function(r){
+     const row=el('div','rrow');
+     row.appendChild(el('span','rname',r.username||r.nickname||''));
+     const bars=el('div','rbars');
+     if(f.kind==='acm'){ bars.appendChild(makeBar('ac', r.ac||0, maxV, '#0a84ff')); bars.appendChild(makeBar('total', r.total||0, maxV, '#909399')); }
+     else { bars.appendChild(makeBar('score', r.score||0, maxV, '#8b5cf6')); }
+     row.appendChild(bars); chart.appendChild(row);
+   });
+   chart.appendChild(el('div','muted', f.kind==='acm' ? '■ AC    ■ Total' : '■ Score'));
+   content.appendChild(chart);
+   const tbl=document.createElement('table');
+   const thead=document.createElement('thead'); const hr=document.createElement('tr');
+   const cols = f.kind==='acm' ? ['#','用户','昵称','AC/Total','AC率','签名'] : ['#','用户','昵称','得分','AC/Total','AC率','签名'];
+   cols.forEach(function(h){ hr.appendChild(el('th','',h)); }); thead.appendChild(hr); tbl.appendChild(thead);
+   const tb=document.createElement('tbody');
+   items.forEach(function(r){
+     const tr=document.createElement('tr');
+     tr.appendChild(el('td','',String(r.rank)));
+     const tdu=el('td'); tdu.appendChild(document.createTextNode(r.username||'')); if(r.titleName){ const tg=el('span','pill',r.titleName); tg.style.background=r.titleColor||'#409eff'; tg.style.marginLeft='4px'; tdu.appendChild(tg); } tr.appendChild(tdu);
+     tr.appendChild(el('td','',r.nickname||''));
+     if(f.kind!=='acm') tr.appendChild(el('td','',String(r.score!=null?r.score:'-')));
+     tr.appendChild(el('td','',(r.ac||0)+'/'+(r.total||0)));
+     tr.appendChild(el('td','', r.total? ((r.ac||0)/r.total*100).toFixed(1)+'%':'0%'));
+     tr.appendChild(el('td','',r.signature||''));
+     tb.appendChild(tr);
+   });
+   tbl.appendChild(tb); content.appendChild(tbl);
+   const total=Number(data.total)||0; const size=Number(data.size)||f.size; const pages=Math.max(1,Number(data.pages)||Math.ceil(total/size)||1); const cur=Math.min(Math.max(1,Number(data.page)||1),pages);
+   function go(p){ f.page=p; fire(); }
+   function mk(label,page,dis,act){ const b=el('button','pg'+(act?' active':''),label); if(dis)b.disabled=true; else b.addEventListener('click',function(){ go(page); }); return b; }
+   function pageList(c,t){ const a=[]; if(t<=7){ for(var i=1;i<=t;i++)a.push(i); return a; } a.push(1); var s=Math.max(2,c-1),e=Math.min(t-1,c+1); if(s>2)a.push('...'); for(var j=s;j<=e;j++)a.push(j); if(e<t-1)a.push('...'); if(t>1)a.push(t); return a; }
+   const pager=el('div','pager');
+   pager.appendChild(mk('‹',Math.max(1,cur-1),cur<=1,false));
+   pageList(cur,pages).forEach(function(pg){ if(pg==='...')pager.appendChild(el('span','pgdots','…')); else pager.appendChild(mk(String(pg),Number(pg),false,Number(pg)===cur)); });
+   pager.appendChild(mk('›',Math.min(pages,cur+1),cur>=pages,false));
+   content.appendChild(pager);
+   content.appendChild(el('div','muted','共 '+total+' 人 · 第 '+cur+' / '+pages+' 页'));
+ }
  function renderStatus(data, filters){
    content.innerHTML='';
    if(data.needLogin){ needLogin(); return; }
@@ -516,6 +621,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  window.addEventListener('message',(e)=>{ const m=e.data;
    if(m.type==='status'){ renderStatus(m.payload, m.filters); return; }
+   if(m.type==='rank'){ renderRank(m.payload, m.filters); return; }
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }

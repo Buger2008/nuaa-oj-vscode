@@ -467,6 +467,10 @@ export class OjApi {
   async changeUserInfo(body: any): Promise<any> {
     return this.request('/api/change-userInfo', { method: 'POST', body });
   }
+
+  async getUserRank(params: { limit?: number; currentPage?: number; type: number; searchUser?: string }): Promise<Paged<any>> {
+    return this.request('/api/get-rank-list', { query: params });
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }
