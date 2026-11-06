@@ -284,7 +284,7 @@ export class NuaaOjService implements ProblemPanelHost {
     return {
       username: u.username,
       email: u.email,
-      avatar: u.avatar,
+      avatar: this.absoluteUrl(u.avatar),
       realname: u.realname,
       nickname: u.nickname,
       school: u.school,
@@ -371,10 +371,10 @@ export class NuaaOjService implements ProblemPanelHost {
     if (r && typeof r === 'object') {
       this.applyUserInfo(r);
       this.onDataChanged();
-      if ((r as any).avatar) return (r as any).avatar;
+      if ((r as any).avatar) return this.absoluteUrl((r as any).avatar);
     }
-    if (typeof r === 'string') return r;
-    return (this.auth.currentUser as any)?.avatar;
+    if (typeof r === 'string') return this.absoluteUrl(r);
+    return this.absoluteUrl((this.auth.currentUser as any)?.avatar);
   }
 
   async openSettings(): Promise<void> {
@@ -384,7 +384,9 @@ export class NuaaOjService implements ProblemPanelHost {
 
   // ---- User home ------------------------------------------------------------
   async info(uid: string, username: string): Promise<any> {
-    return this.auth.api.getUserHomeInfo(uid, username);
+    const v = await this.auth.api.getUserHomeInfo(uid, username);
+    if (v && v.avatar) v.avatar = this.absoluteUrl(v.avatar);
+    return v;
   }
 
   async heatmap(uid: string, username: string): Promise<any> {
@@ -403,6 +405,15 @@ export class NuaaOjService implements ProblemPanelHost {
 
   private base(): string {
     return vscode.workspace.getConfiguration('nuaaOj').get<string>('baseUrl', 'https://oj.nuaa.edu.cn').replace(/\/+$/, '');
+  }
+
+  /** Turn a possibly-relative asset URL (e.g. /api/public/img/x.png) into an absolute OJ URL. */
+  private absoluteUrl(u?: string): string | undefined {
+    if (!u) return u;
+    const s = String(u);
+    if (/^https?:\/\//i.test(s) || /^data:/i.test(s)) return s;
+    const b = this.base();
+    return s.startsWith('/') ? b + s : b + '/' + s;
   }
 
   // ---- Opening a problem ----------------------------------------------------

@@ -92,6 +92,12 @@ export class UserHomePanel {
  .stat .n{font-size:20px;font-weight:700;} .stat .l{font-size:12px;color:var(--vscode-descriptionForeground);}
  h2{font-size:14px;margin:16px 0 8px;border-left:3px solid var(--vscode-focusBorder);padding-left:8px;}
  .heat{display:flex;gap:3px;flex-wrap:wrap;}
+ .diffs{max-width:520px;}
+ .diffrow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px;}
+ .diffrow .dl{width:52px;color:var(--vscode-descriptionForeground);}
+ .diffrow .dbar{flex:1;height:12px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;}
+ .diffrow .dbar i{display:block;height:100%;border-radius:6px;}
+ .diffrow .dn{width:36px;text-align:right;font-weight:600;}
  .cell{width:14px;height:14px;border-radius:3px;background:rgba(127,127,127,.18);}
  table{border-collapse:collapse;width:100%;font-size:12px;} th,td{border-bottom:1px solid var(--vscode-panel-border);padding:5px 4px;text-align:left;white-space:nowrap;}
  th{position:sticky;top:0;background:inherit;} tr:hover{background:rgba(127,127,127,.12);}
@@ -131,6 +137,15 @@ export class UserHomePanel {
      html+='<div class="stat"><div class="n">'+(i.rating!=null?i.rating:'--')+'</div><div class="l">Rating</div></div>';
      html+='</div>';
    } else { html+='<p class="muted">'+esc(state.infoError||'加载中…')+'</p>'; }
+   if(i && i.solvedGroupByDifficulty){
+     const g=i.solvedGroupByDifficulty;
+     const cnt={1:(g['1']||[]).length,2:(g['2']||[]).length,3:(g['3']||[]).length,0:(g['0']||[]).length};
+     const rows=[['简单',cnt[1],'#67c23a'],['中等',cnt[2],'#e6a23c'],['困难',cnt[3],'#f56c6c'],['未分类',cnt[0],'#909399']];
+     const max=Math.max(cnt[1],cnt[2],cnt[3],cnt[0],1);
+     html+='<h2>已解决 · 按难度</h2><div class="diffs">';
+     rows.forEach(function(r){ html+='<div class="diffrow"><span class="dl">'+r[0]+'</span><div class="dbar"><i style="width:'+Math.round(r[1]/max*100)+'%;background:'+r[2]+'"></i></div><span class="dn">'+r[1]+'</span></div>'; });
+     html+='</div>';
+   }
    if(state.heat && state.heat.dataList){
      const list=state.heat.dataList; const max=Math.max.apply(null,list.map(function(x){return x.count||0;}).concat([1]));
      html+='<h2>近期活跃（截止 '+esc(state.heat.endDate||'')+'）</h2><div class="heat">';
