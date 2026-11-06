@@ -434,6 +434,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .mrow:last-child{border-bottom:none;}
  .mrow:hover{background:rgba(127,127,127,.12);}
  .mlabel{flex:1;font-size:13.5px;} .mchev{color:var(--vscode-descriptionForeground);font-size:16px;}
+ .micon{width:24px;flex:none;display:inline-flex;justify-content:center;align-items:center;font-size:15px;line-height:1;}
  .card .name{font-size:16px;font-weight:700;}
  .card .row{margin-top:6px;color:var(--vscode-descriptionForeground);}
  .btn{font-family:inherit;font-size:12.5px;padding:5px 12px;border-radius:4px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;margin-top:10px;}
@@ -629,13 +630,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(user.roles&&user.roles.length) info.appendChild(el('div','row','角色：'+user.roles.join(', ')));
    card.appendChild(info); content.appendChild(card);
    const menu=el('div','menu');
-   function row(label, fn){ const r=el('div','mrow'); r.appendChild(el('span','mlabel',label)); r.appendChild(el('span','mchev','›')); r.addEventListener('click',fn); menu.appendChild(r); }
-   row('👤 我的主页', function(){ vscode.postMessage({type:'openMyHome'}); });
-   row('📥 我的提交', function(){ openMySubs(); });
-   row('📊 能力画像', function(){ vscode.postMessage({type:'openProfile'}); });
-   row('🔔 系统通知', function(){ vscode.postMessage({type:'openMessages'}); });
-   row('⚙ 设置', function(){ vscode.postMessage({type:'openSettings'}); });
-   row('🚪 退出登录', function(){ vscode.postMessage({type:'logout'}); });
+   function row(icon, label, fn){ const r=el('div','mrow'); r.appendChild(el('span','micon',icon)); r.appendChild(el('span','mlabel',label)); r.appendChild(el('span','mchev','›')); r.addEventListener('click',fn); menu.appendChild(r); }
+   row('👤', '我的主页', function(){ vscode.postMessage({type:'openMyHome'}); });
+   row('📥', '我的提交', function(){ openMySubs(); });
+   row('📊', '能力画像', function(){ vscode.postMessage({type:'openProfile'}); });
+   row('🔔', '系统通知', function(){ vscode.postMessage({type:'openMessages'}); });
+   row('⚙️', '设置', function(){ vscode.postMessage({type:'openSettings'}); });
+   row('🚪', '退出登录', function(){ vscode.postMessage({type:'logout'}); });
    content.appendChild(menu);
  }
  function openMySubs(){ activeTab='status'; if(typeof setActive==='function') setActive(); vscode.postMessage({type:'status', onlyMine:true, status:'', page:1, size:30}); }
