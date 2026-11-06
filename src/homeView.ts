@@ -466,6 +466,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  let state = { loggedIn:false, user:null };
  const content = document.getElementById('content');
  const el = (tag, cls, txt) => { const e=document.createElement(tag); if(cls) e.className=cls; if(txt!==undefined) e.textContent=txt; return e; };
+ function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
  document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); setActive(); vscode.postMessage({type:'tab', tab:activeTab}); }));
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
@@ -516,7 +517,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    // 提交统计
    content.appendChild(secTitle('近 7 天提交统计'));
    if(data.statsError){ content.appendChild(el('div','err','统计加载失败：'+data.statsError)); }
-   else if(data.stats){ const d=el('div','hchart'); d.innerHTML=lineChart(data.stats); content.appendChild(d); }
+   else if(data.stats){ const d=el('div','hchart'); try{ d.innerHTML=lineChart(data.stats); }catch(e){ d.textContent='图表渲染失败：'+(e&&e.message); } content.appendChild(d); }
    else content.appendChild(el('div','empty','暂无数据'));
    // 最近更新题目
    content.appendChild(secTitle('最近更新题目'));
