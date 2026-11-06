@@ -491,6 +491,14 @@ export class OjApi {
   async getRecentUpdatedProblemList(): Promise<any[]> {
     return this.request('/api/get-recent-updated-problem');
   }
+
+  async getSysMsgList(params: { limit?: number; currentPage?: number }): Promise<Paged<any>> {
+    return this.request('/api/msg/sys', { query: params });
+  }
+
+  async getUnreadMsgCount(): Promise<any> {
+    return this.request('/api/msg/unread');
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }

@@ -7,6 +7,7 @@ import { AssistantPanel } from './assistantPanel';
 import { ProfilePanel } from './profilePanel';
 import { SettingsPanel } from './settingsPanel';
 import { UserHomePanel } from './userHomePanel';
+import { MessagesPanel } from './messagesPanel';
 import {
   ProblemContext,
   buildContext,
@@ -405,6 +406,17 @@ export class NuaaOjService implements ProblemPanelHost {
 
   async openSubmission(submitId: number): Promise<void> {
     await RecordsPanel.showDetail(this, this.extensionUri, submitId);
+  }
+
+  // ---- Messages (system notifications) -------------------------------------
+  async list(page: number, size: number): Promise<{ records: any[]; total: number }> {
+    const r = await this.auth.api.getSysMsgList({ currentPage: page, limit: size });
+    return { records: r.records || [], total: r.total || 0 };
+  }
+
+  async openMessages(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    await MessagesPanel.show(this, this.extensionUri);
   }
 
   private base(): string {
