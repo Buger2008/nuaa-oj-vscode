@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { ProblemDetail } from './types';
 import { Sample, parseSamples } from './samples';
+import { ensureBaseTempDir } from './tempDir';
 
 export type ProblemKind = 'problem' | 'training';
 
@@ -190,7 +190,9 @@ export function submissionLanguage(ctx: ProblemContext, filePath: string): strin
 }
 
 export function problemFolderName(ctx: ProblemContext): string {
-  return sanitizeName(`${ctx.displayId} ${ctx.title}`) || ctx.displayId;
+  // Use the problem number/ID only. Titles are often Chinese and non-ASCII paths can
+  // break gcc/gdb/clang toolchains.
+  return sanitizeName(ctx.displayId) || 'problem';
 }
 
 let tempRoot: vscode.Uri | undefined;
@@ -202,7 +204,8 @@ export function setTempRoot(uri: vscode.Uri | undefined): void {
 /** Create (once) a random-UUID temp workspace under the OS temp dir. */
 export async function ensureTempRoot(): Promise<vscode.Uri> {
   if (tempRoot) return tempRoot;
-  const dir = path.join(os.tmpdir(), 'nuaa-oj-' + crypto.randomUUID());
+  const base = await ensureBaseTempDir();
+  const dir = path.join(base, 'nuaa-oj-' + crypto.randomUUID());
   await fs.promises.mkdir(dir, { recursive: true });
   tempRoot = vscode.Uri.file(dir);
   return tempRoot;
@@ -283,3 +286,4 @@ export async function findContextInWorkspaceByDisplayId(displayId: string): Prom
   }
   return undefined;
 }
+

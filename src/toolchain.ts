@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
+import { baseTempDir } from './tempDir';
 import * as path from 'path';
 
 /**
@@ -50,7 +50,7 @@ function run(command: string, args: string[], cwd: string): Promise<{ code: numb
 
 async function probeCompiler(command: string, lang: 'c' | 'cpp', extraArgs: string[]): Promise<ProbeResult> {
   if (!command) return { found: false };
-  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'nuaa-cc-'));
+  const dir = await fs.promises.mkdtemp(path.join(baseTempDir(), 'nuaa-cc-'));
   const isWindows = process.platform === 'win32';
   const src = path.join(dir, lang === 'c' ? 'probe.c' : 'probe.cpp');
   await fs.promises.writeFile(src, lang === 'c' ? 'int main(void){return 0;}\n' : 'int main(){return 0;}\n');
@@ -118,3 +118,4 @@ export async function resolveCppCompiler(configured: string | undefined): Promis
   if (cacheCpp) return { command: cacheCpp, source: 'detected' };
   return { command: 'clang++', source: 'fallback' };
 }
+

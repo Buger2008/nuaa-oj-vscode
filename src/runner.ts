@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
+import { baseTempDir } from './tempDir';
 import * as path from 'path';
 import { Sample } from './samples';
 
@@ -151,7 +151,7 @@ function ensureBitsShim(): Promise<string | undefined> {
   if (shimPromise) return shimPromise;
   shimPromise = (async () => {
     try {
-      const dir = path.join(os.tmpdir(), 'nuaa-oj-include');
+      const dir = path.join(baseTempDir(), 'nuaa-oj-include');
       const bits = path.join(dir, 'bits');
       await fs.promises.mkdir(bits, { recursive: true });
       const headers = [
@@ -297,7 +297,7 @@ export async function runSamples(
     extraInclude = await ensureBitsShim();
   }
   const plan = buildPlan(language, sourcePath, isWindows, cfg, extraInclude);
-  const workRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'nuaa-oj-'));
+  const workRoot = await fs.promises.mkdtemp(path.join(baseTempDir(), 'nuaa-oj-'));
   const outDir = path.join(workRoot, 'bin');
   await fs.promises.mkdir(outDir, { recursive: true });
   const extra = cfg.timeLimitExtraMs;
@@ -373,3 +373,4 @@ export async function runSamples(
     fs.promises.rm(workRoot, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
