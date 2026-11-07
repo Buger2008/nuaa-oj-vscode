@@ -78,6 +78,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     openMyHome: () => void service.openMyHome(),
     openLearning: () => void service.openLearning(),
     openUser: (uid: string, username: string) => void service.openUserHome(uid, username),
+    openSubmission: (submitId: number) => void service.openSubmission(submitId),
     onChange: refreshAll,
   });
 

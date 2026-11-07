@@ -14,6 +14,7 @@ export interface HomeCallbacks {
   openMyHome: () => void;
   openLearning: () => void;
   openUser: (uid: string, username: string) => void;
+  openSubmission: (submitId: number) => void;
   onChange?: () => void;
 }
 
@@ -161,6 +162,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'openUser':
         this.cb.openUser(String(m.uid || ''), String(m.username || ''));
+        break;
+      case 'openSubmission':
+        this.cb.openSubmission(Number(m.submitId));
         break;
       case 'openProblem':
         await this.cb.openProblem(String(m.value));
@@ -892,7 +896,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    const tb=document.createElement('tbody');
    items.forEach(function(r){
      const tr=document.createElement('tr');
-     const td0=el('td'); const a=el('a','runid','#'+r.submitId); a.href='#'; a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUrl',url:r.url}); }); td0.appendChild(a); tr.appendChild(td0);
+     const td0=el('td'); const a=el('a','runid','#'+r.submitId); a.href='#'; a.title='在 VS Code 中查看提交详情'; a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openSubmission', submitId:r.submitId}); }); td0.appendChild(a); tr.appendChild(td0);
      tr.appendChild(el('td','',r.username||''));
      tr.appendChild(el('td','',(r.displayPid||'')+' '+(r.title||'')));
      const tdst=el('td'); const pill=el('span','pill',r.statusShort); pill.style.background=r.statusColor; tdst.appendChild(pill); tdst.appendChild(document.createTextNode(' '+r.statusName)); tr.appendChild(tdst);
