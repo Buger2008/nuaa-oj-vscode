@@ -264,7 +264,7 @@ export class CurrentProblemProvider implements vscode.TreeDataProvider<vscode.Tr
       return [n];
     }
     const ctx = this.ctx;
-    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C++');
+    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
     const fileLang = ctx.solutionFile ? extensionToLanguage(path.extname(ctx.solutionFile).toLowerCase()) : undefined;
     const effective = submissionLanguage(ctx, ctx.solutionFile || '') || pickLanguage(ctx, fileLang, defaultLang);
     const locked = isLanguageLocked(ctx);

@@ -165,7 +165,7 @@ export function pickLanguage(
     if (!allowed || allowed.includes(c)) return c;
   }
   if (allowed) return allowed[0];
-  return configDefault || fileLanguage || 'C++';
+  return configDefault || fileLanguage || 'C';
 }
 
 export function isLanguageLocked(ctx: ProblemContext): boolean {

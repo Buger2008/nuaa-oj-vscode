@@ -553,7 +553,7 @@ export class NuaaOjService implements ProblemPanelHost {
       ctx.selectedLanguage = existing.selectedLanguage;
     }
 
-    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C++');
+    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
     const language = pickLanguage(ctx, undefined, defaultLang);
     const created = await this.createSolutionFile(folder, ctx, language);
     if (!created) return undefined; // user cancelled naming
@@ -705,7 +705,7 @@ export class NuaaOjService implements ProblemPanelHost {
     const fileUri = await this.getSolutionUri(ctx);
     const fileName = fileUri ? path.basename(fileUri.fsPath) : ctx.solutionFile || '';
     const fileLang = fileUri ? extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase()) : undefined;
-    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C++');
+    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
     const effective = (fileUri ? submissionLanguage(ctx, fileUri.fsPath) : undefined) || pickLanguage(ctx, fileLang, defaultLang);
     const user = this.auth.currentUser;
     return {
@@ -1017,7 +1017,7 @@ export class NuaaOjService implements ProblemPanelHost {
     const doc = await vscode.workspace.openTextDocument(fileUri);
     const code = doc.getText();
     if (!code.trim()) return { error: '代码为空，无法提交。' };
-    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C++');
+    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
     const fileLang = extensionToLanguage(path.extname(fileUri.fsPath).toLowerCase());
     // Submission language follows the actual file; a language forbidden for this problem blocks submission.
     const language = submissionLanguage(ctx, fileUri.fsPath) || pickLanguage(ctx, fileLang, defaultLang);

@@ -240,7 +240,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
     }
-    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C++');
+    const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
     const fileLang = ctx.solutionFile ? extensionToLanguage(path.extname(ctx.solutionFile).toLowerCase()) : undefined;
     const current = pickLanguage(ctx, fileLang, defaultLang);
     const pick = await vscode.window.showQuickPick(
