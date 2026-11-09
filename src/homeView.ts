@@ -38,7 +38,7 @@ function statsTip(p: any): string {
   const t = Number(p.total) || 0;
   let s = '难度：' + diffLabel(p.difficulty);
   if (t > 0) {
-    s += '\nAC ' + pctStr(p.ac, t) + '\nWA ' + pctStr(p.wa, t) + '\nTLE ' + pctStr(p.tle, t) + '\nMLE ' + pctStr(p.mle, t) +
+    s += '\nAC ' + pctStr(p.ac, t) + '\nPAC ' + pctStr(p.pa, t) + '\nWA ' + pctStr(p.wa, t) + '\nTLE ' + pctStr(p.tle, t) + '\nMLE ' + pctStr(p.mle, t) +
       '\nRE ' + pctStr(p.re, t) + '\nPE ' + pctStr(p.pe, t) + '\nCE ' + pctStr(p.ce, t) + '\nSE ' + pctStr(p.se, t) + '\n共 ' + t + ' 次提交';
   } else {
     s += '\n暂无提交统计';
@@ -460,22 +460,19 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const stages: any[] = Array.isArray(d?.stages) ? d.stages : [];
       const chapters: any[] = [];
       const seen = new Set<string>();
-      const allProblems = await this.getProblems('');
-      const byId = new Map<string, any>((allProblems.items || []).map((i: any) => [String(i.id), i]));
-      const mapProb = (p: any) => {
-        const m = byId.get(String(p.problem_id));
-        return {
-          id: p.problem_id,
-          title: m ? m.title : p.title,
-          difficulty: m ? m.difficulty : 0,
-          dlabel: m ? m.dlabel : '',
-          tip: m ? m.tip : '',
-          ac: m ? m.ac : !!p.ac,
-          attempted: m ? m.attempted : !!p.attempted,
-          statusShort: m ? m.statusShort : '',
-          statusColor: m ? m.statusColor : '',
-        };
-      };
+      // Homework completion must come from the course/homework data itself (learning-map),
+      // not from submission history, which can be stale or from a previous term.
+      const mapProb = (p: any) => ({
+        id: p.problem_id,
+        title: p.title,
+        difficulty: Number(p.difficulty) || 0,
+        dlabel: diffLabel(p.difficulty),
+        tip: '',
+        ac: !!p.ac,
+        attempted: !!p.attempted,
+        statusShort: p.ac ? 'AC' : p.attempted ? '未完成' : '',
+        statusColor: p.ac ? '#67c23a' : '#f56c6c',
+      });
       const add = (name: string, label: string, hw: any[], pr: any[]) => {
         const pp = prog[name] || {};
         chapters.push({

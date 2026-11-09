@@ -2,7 +2,7 @@
   "name": "nuaa-oj",
   "displayName": "NUAA OJ",
   "description": "在 VS Code 中直接登录、查找、编写、测试并提交 NUAA OJ（HOJ）题目，无需浏览器。",
-  "version": "1.10.10",
+  "version": "1.10.11",
   "publisher": "buger",
   "license": "MIT",
   "repository": {
@@ -366,6 +366,7 @@
     "typescript": "^5.5.4"
   }
 }
+
 
 
 
