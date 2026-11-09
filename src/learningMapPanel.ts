@@ -77,6 +77,20 @@ export class LearningMapPanel {
  .muted{color:var(--vscode-descriptionForeground);font-size:12px;}
  .btn{font-family:inherit;font-size:12.5px;padding:5px 12px;border-radius:4px;border:1px solid transparent;background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;}
  .top{display:grid;grid-template-columns:minmax(280px,1fr) minmax(260px,1fr);gap:14px;}
+ .legend{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--vscode-descriptionForeground);margin:8px 0;}
+ .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-left:8px;}
+ .dot.done{background:#67c23a;} .dot.doing{background:#0a84ff;} .dot.locked{background:#909399;}
+ .map{overflow-x:auto;border:1px solid var(--vscode-panel-border);border-radius:10px;padding:12px;background:rgba(127,127,127,.05);margin-bottom:12px;}
+ .cols{display:flex;gap:22px;align-items:flex-start;}
+ .col{min-width:172px;flex:none;}
+ .node{border:1.5px solid #67c23a;border-radius:8px;padding:6px 8px;margin:4px 0;cursor:pointer;font-size:12px;background:var(--vscode-editor-background);}
+ .node .t1{font-weight:700;font-size:12.5px;}
+ .node .meta{font-size:10.5px;color:var(--vscode-descriptionForeground);margin-top:2px;}
+ .node.done{border-color:#67c23a;} .node.doing{border-color:#0a84ff;} .node.locked{border-color:#909399;opacity:.75;}
+ .node.selected{box-shadow:0 0 0 2px var(--vscode-focusBorder) inset;}
+ .node .bar2{height:4px;border-radius:2px;background:rgba(127,127,127,.25);margin-top:4px;overflow:hidden;}
+ .node .bar2 i{display:block;height:100%;}
+ .children{margin-left:12px;padding-left:10px;border-left:1px dashed var(--vscode-panel-border);}
  .card{border:1px solid var(--vscode-panel-border);border-radius:10px;padding:12px 14px;}
  .card .head{font-size:12px;letter-spacing:.08em;color:var(--vscode-descriptionForeground);text-transform:uppercase;margin-bottom:2px;}
  .kpname{font-size:17px;font-weight:700;margin-bottom:4px;}
@@ -96,6 +110,8 @@ export class LearningMapPanel {
 <h1>学习地图</h1>
 <div class="muted" id="sub">加载中…</div>
 <div><button class="btn" id="btn-refresh">刷新</button></div>
+<div class="legend"><span>状态：</span><span class="dot done"></span>已完成 <span class="dot doing"></span>进行中 <span class="dot locked"></span>未解锁</div>
+<div id="mapwrap"></div>
 <div class="top">
   <div class="card">
     <div class="head">Capability</div>
@@ -112,7 +128,7 @@ export class LearningMapPanel {
 </div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
- const rootSub=document.getElementById('sub'), radarEl=document.getElementById('radar'), metricsEl=document.getElementById('metrics'), progressEl=document.getElementById('progress'), kpnameEl=document.getElementById('kpname');
+ const rootSub=document.getElementById('sub'), radarEl=document.getElementById('radar'), metricsEl=document.getElementById('metrics'), progressEl=document.getElementById('progress'), kpnameEl=document.getElementById('kpname'), mapwrap=document.getElementById('mapwrap');
  document.getElementById('btn-refresh').addEventListener('click',()=>vscode.postMessage({type:'refresh'}));
  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
  const DIMS=['正确解题','难题攻克','调试改进','代码结构','迁移应用','运行效率'];
@@ -136,6 +152,25 @@ export class LearningMapPanel {
    state.kps=flatten(map.stages||[],[]);
    const unlocked=state.kps.filter(function(k){return k.accessible;}), locked=state.kps.filter(function(k){return !k.accessible;});
    rootSub.textContent=(state.course.course_name||'')+(state.course.current_topic_label?(' · 当前进度：'+state.course.current_topic_label):'');
+   const stages=map.stages||[], prog=map.student_progress||{};
+   function nodeHtml(n,level){
+     const p=prog[n.name]||{}; const total=Number(p.homework_total)||0, pass=Number(p.homework_pass)||0;
+     const pct=total?Math.round(pass/total*100):0;
+     const cls=n.accessible?(pct>=100?'done':'doing'):'locked';
+     const status=n.accessible?(pct>=100?'已完成':'进行中'):'未解锁';
+     const color=cls==='done'?'#67c23a':cls==='doing'?'#0a84ff':'#909399';
+     return '<div class="node '+cls+(n.name===state.selected?' selected':'')+'" data-kp="'+esc(n.name)+'"><div class="t1">'+(level===1?'一级 ':'二级 ')+esc(n.label)+'</div><div class="meta">'+status+' · '+pass+'/'+total+' · '+pct+'%</div><div class="bar2"><i style="width:'+pct+'%;background:'+color+'"></i></div></div>';
+   }
+   let mh='<div class="cols">';
+   stages.forEach(function(s){
+     mh+='<div class="col">'+nodeHtml(s,1);
+     const kids=Array.isArray(s.children)?s.children:[];
+     if(kids.length){ mh+='<div class="children">'; kids.forEach(function(c){ mh+=nodeHtml(c,2); }); mh+='</div>'; }
+     mh+='</div>';
+   });
+   mh+='</div>';
+   mapwrap.innerHTML=mh;
+   mapwrap.querySelectorAll('[data-kp]').forEach(function(el){ el.addEventListener('click',function(){ selectKp(el.getAttribute('data-kp')); }); });
    let h='<span class="badge ok">已解锁 '+unlocked.length+'</span><div class="chipwrap">';
    unlocked.forEach(function(k){ h+='<span class="chip unlocked'+(k.name===state.selected?' active':'')+'" data-kp="'+esc(k.name)+'">'+esc(k.label)+'</span>'; });
    h+='</div><span class="badge lock">待解锁 '+locked.length+'</span><div class="chipwrap">';
@@ -145,7 +180,7 @@ export class LearningMapPanel {
    progressEl.querySelectorAll('.chip').forEach(function(c){ c.addEventListener('click',function(){ selectKp(c.getAttribute('data-kp')); }); });
    highlight();
  }
- function highlight(){ progressEl.querySelectorAll('.chip').forEach(function(c){ c.classList.toggle('active', c.getAttribute('data-kp')===state.selected); }); }
+ function highlight(){ document.querySelectorAll('[data-kp]').forEach(function(c){ c.classList.toggle('active', c.getAttribute('data-kp')===state.selected); c.classList.toggle('selected', c.classList.contains('node') && c.getAttribute('data-kp')===state.selected); }); }
  function selectKp(kp){ if(!kp||kp===state.selected) return; state.selected=kp; highlight(); kpnameEl.textContent=(findKp(kp)||{}).label||kp; radarEl.innerHTML='<p class="muted">加载中…</p>'; metricsEl.innerHTML=''; vscode.postMessage({type:'knowledge', kpId:kp}); }
  function findKp(kp){ return state.kps.find(function(k){return k.name===kp;}); }
  function renderKnowledge(kpId,data){
