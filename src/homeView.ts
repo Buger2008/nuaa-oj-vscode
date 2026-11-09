@@ -424,20 +424,23 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) return;
     try {
       const probs = await this.auth.api.getTrainingProblemList(tid);
-      const stMap = await this.fetchStatusMap(probs.map((p: any) => p.pid));
+      // Use exactly the same data source as 自由练习 (problem list + user status) so the
+      // status and submission statistics are identical and never 0 just because the
+      // training record itself has no aggregate stats.
+      const all = await this.getProblems('');
+      const byId = new Map<string, any>((all.items || []).map((i: any) => [String(i.id), i]));
       const items = probs.map((p: any) => {
-        const st = stMap.get(Number(p.pid));
-        const sm = statusMeta(st === undefined ? -10 : st);
+        const m = byId.get(String(p.problemId));
         return {
           id: p.problemId,
-          title: p.title,
-          difficulty: Number(p.difficulty) || 0,
-          dlabel: diffLabel(p.difficulty),
-          tip: statsTip(p),
-          ac: st === 0,
-          attempted: st !== undefined && st !== -10,
-          statusShort: sm.short,
-          statusColor: sm.color,
+          title: m ? m.title : p.title,
+          difficulty: m ? m.difficulty : Number(p.difficulty) || 0,
+          dlabel: m ? m.dlabel : diffLabel(p.difficulty),
+          tip: m ? m.tip : statsTip(p),
+          ac: m ? m.ac : false,
+          attempted: m ? m.attempted : false,
+          statusShort: m ? m.statusShort : '',
+          statusColor: m ? m.statusColor : '',
           value: `training/${tid}/problem/${p.problemId}`,
         };
       });
