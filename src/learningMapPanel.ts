@@ -2,11 +2,14 @@ import * as vscode from 'vscode';
 
 export interface LearningMapHost {
   data(): Promise<any>;
+  knowledge(kpId: string): Promise<any>;
 }
 
 function esc(s: any): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+const DIMS = ['正确解题', '难题攻克', '调试改进', '代码结构', '迁移应用', '运行效率'];
 
 export class LearningMapPanel {
   private static current: LearningMapPanel | undefined;
@@ -33,19 +36,32 @@ export class LearningMapPanel {
     this.panel.webview.options = { enableScripts: true };
     this.panel.webview.html = this.html();
     this.panel.webview.onDidReceiveMessage(async (m) => {
-      if (m?.type === 'ready') await this.load();
-      else if (m?.type === 'refresh') await this.load();
+      if (m?.type === 'ready' || m?.type === 'refresh') await this.loadMap();
+      else if (m?.type === 'knowledge') await this.loadKnowledge(String(m.kpId || ''));
     }, null, this.disposables);
   }
 
   private post(msg: any): void { try { void this.panel.webview.postMessage(msg); } catch { /* ignore */ } }
 
-  private async load(): Promise<void> {
+  private async loadMap(): Promise<void> {
     this.post({ type: 'loading' });
     try {
-      this.post({ type: 'data', data: await this.host.data() });
+      const data = await this.host.data();
+      const current = data?.overview?.map?.course?.current_topic || '';
+      this.post({ type: 'map', data, current });
+      await this.loadKnowledge(current);
     } catch (e: any) {
       this.post({ type: 'error', text: e?.message ?? String(e) });
+    }
+  }
+
+  private async loadKnowledge(kpId: string): Promise<void> {
+    if (!kpId) return;
+    this.post({ type: 'knowledgeLoading', kpId });
+    try {
+      this.post({ type: 'knowledge', kpId, data: await this.host.knowledge(kpId) });
+    } catch (e: any) {
+      this.post({ type: 'knowledgeError', kpId, text: e?.message ?? String(e) });
     }
   }
 
@@ -57,62 +73,100 @@ export class LearningMapPanel {
 <style>
  body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background);margin:0;padding:16px 22px;font-size:13px;}
  h1{font-size:18px;margin:0 0 4px;}
- h2{font-size:14px;margin:18px 0 8px;border-left:3px solid var(--vscode-focusBorder);padding-left:8px;}
+ h2{font-size:14px;margin:16px 0 8px;border-left:3px solid var(--vscode-focusBorder);padding-left:8px;}
  .muted{color:var(--vscode-descriptionForeground);font-size:12px;}
- .btn{font-family:inherit;font-size:12.5px;padding:6px 12px;border-radius:4px;border:1px solid transparent;background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;margin:4px 0;}
- .chart{border:1px solid var(--vscode-panel-border);border-radius:6px;padding:8px 10px;margin-bottom:10px;}
- .row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12.5px;}
- .row .name{width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
- .row .bar{flex:1;height:11px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;}
- .row .bar i{display:block;height:100%;border-radius:6px;}
- .row .v{width:44px;text-align:right;color:var(--vscode-descriptionForeground);}
- .kp{padding:8px 10px;border:1px solid var(--vscode-panel-border);border-radius:8px;margin:8px 0;}
- .kp>summary{cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none;}
- .kp>summary::-webkit-details-marker{display:none;}
- .tag{font-size:11px;padding:1px 6px;border-radius:8px;color:#fff;}
- .tag.open{background:#67c23a;} .tag.lock{background:#909399;}
+ .btn{font-family:inherit;font-size:12.5px;padding:5px 12px;border-radius:4px;border:1px solid transparent;background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;}
+ .top{display:grid;grid-template-columns:minmax(280px,1fr) minmax(260px,1fr);gap:14px;}
+ .card{border:1px solid var(--vscode-panel-border);border-radius:10px;padding:12px 14px;}
+ .card .head{font-size:12px;letter-spacing:.08em;color:var(--vscode-descriptionForeground);text-transform:uppercase;margin-bottom:2px;}
+ .kpname{font-size:17px;font-weight:700;margin-bottom:4px;}
+ .radar{display:flex;justify-content:center;margin:6px 0;color:var(--vscode-foreground);}
+ .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;}
+ .metric{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:8px;}
+ .metric .score{font-size:16px;font-weight:700;} .metric .dim{font-size:11.5px;color:var(--vscode-descriptionForeground);}
+ .metric .samp{font-size:11px;color:var(--vscode-descriptionForeground);margin-top:2px;}
+ .chipwrap{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px;}
+ .chip{font-size:12px;padding:3px 9px;border-radius:12px;border:1px solid;cursor:pointer;background:transparent;}
+ .chip.unlocked{color:#67c23a;border-color:#67c23a;}
+ .chip.locked{color:var(--vscode-descriptionForeground);border-color:var(--vscode-panel-border);}
+ .chip.active{background:#0a84ff;border-color:#0a84ff;color:#fff;font-weight:600;}
+ .badge{display:inline-block;font-size:12px;padding:2px 10px;border-radius:10px;color:#fff;margin-bottom:4px;}
+ .badge.ok{background:#67c23a;} .badge.lock{background:#909399;}
 </style></head><body>
 <h1>学习地图</h1>
 <div class="muted" id="sub">加载中…</div>
 <div><button class="btn" id="btn-refresh">刷新</button></div>
-<div id="root"></div>
+<div class="top">
+  <div class="card">
+    <div class="head">Capability</div>
+    <div class="kpname" id="kpname">—</div>
+    <div class="muted">基于该知识点相关题目的六维学习能力</div>
+    <div class="radar" id="radar"></div>
+    <div class="metrics" id="metrics"></div>
+  </div>
+  <div class="card">
+    <div class="head">Progress</div>
+    <div class="kpname">知识点解锁进度</div>
+    <div id="progress"></div>
+  </div>
+</div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
- const root=document.getElementById('root'), sub=document.getElementById('sub');
+ const rootSub=document.getElementById('sub'), radarEl=document.getElementById('radar'), metricsEl=document.getElementById('metrics'), progressEl=document.getElementById('progress'), kpnameEl=document.getElementById('kpname');
  document.getElementById('btn-refresh').addEventListener('click',()=>vscode.postMessage({type:'refresh'}));
  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
- function render(data){
-   const map=data&&data.overview&&data.overview.map; if(!map){ root.innerHTML='<p class="muted">暂无学习数据</p>'; return; }
-   const course=map.course||{}; const stages=map.stages||[]; const prog=map.student_progress||{};
-   sub.textContent=(course.course_name||'')+(course.current_topic_label?(' · 当前进度：'+course.current_topic_label):'');
-   function flat(ns,out){ ns.forEach(function(n){ out.push(n); if(Array.isArray(n.children)&&n.children.length) flat(n.children,out); }); return out; }
-   const all=flat(stages,[]); const unlocked=all.filter(function(n){return n.accessible;}).length;
-   let h='<h2>概览（'+unlocked+' / '+all.length+' 已解锁）</h2>';
-   h+='<div class="chart">';
-   stages.forEach(function(s){
-     const p=prog[s.name]||{}; const pass=Number(p.homework_pass)||0, total=Number(p.homework_total)||0;
-     const pct=total?Math.round(pass/total*100):0;
-     h+='<div class="row"><span class="name" title="'+esc(s.label)+'">'+esc(s.label)+'</span><div class="bar"><i style="width:'+pct+'%;background:'+(s.accessible?'#0a84ff':'#909399')+'"></i></div><span class="v">'+pct+'%</span></div>';
-   });
+ const DIMS=['正确解题','难题攻克','调试改进','代码结构','迁移应用','运行效率'];
+ let state={map:null, kps:[], selected:'', course:{}, currentData:null};
+ function flatten(ns,out){ ns.forEach(function(n){ out.push(n); if(Array.isArray(n.children)&&n.children.length) flatten(n.children,out); }); return out; }
+ function radar(labels,vals,color){
+   const n=labels.length; if(!n) return '';
+   const S=250,c=S/2,R=S/2-46;
+   function pt(i,r){ const a=-Math.PI/2+i*2*Math.PI/n; return [c+r*Math.cos(a), c+r*Math.sin(a)]; }
+   let s='<svg viewBox="0 0 '+S+' '+S+'" width="'+S+'" height="'+S+'">';
+   [0.25,0.5,0.75,1].forEach(function(f){ let ps=[]; for(let i=0;i<n;i++){ const p=pt(i,R*f); ps.push(p[0].toFixed(1)+','+p[1].toFixed(1)); } s+='<polygon points="'+ps.join(' ')+'" fill="none" stroke="rgba(127,127,127,.3)" stroke-width="1"/>'; });
+   for(let i=0;i<n;i++){ const p=pt(i,R); s+='<line x1="'+c+'" y1="'+c+'" x2="'+p[0].toFixed(1)+'" y2="'+p[1].toFixed(1)+'" stroke="rgba(127,127,127,.25)"/>'; }
+   let dp=[]; for(let i=0;i<n;i++){ const v=Math.max(0,Math.min(1,Number(vals[i])||0)); const p=pt(i,R*v); dp.push(p[0].toFixed(1)+','+p[1].toFixed(1)); }
+   s+='<polygon points="'+dp.join(' ')+'" fill="'+color+'33" stroke="'+color+'" stroke-width="2"/>';
+   for(let i=0;i<n;i++){ const p=pt(i,R+16); s+='<text x="'+p[0].toFixed(1)+'" y="'+p[1].toFixed(1)+'" font-size="10" fill="currentColor" text-anchor="middle" dominant-baseline="middle">'+esc(labels[i])+'</text>'; }
+   s+='</svg>'; return s;
+ }
+ function renderMap(data,current){
+   const map=data&&data.overview&&data.overview.map; if(!map){ progressEl.innerHTML='<p class="muted">暂无数据</p>'; return; }
+   state.map=map; state.course=map.course||{}; state.selected=current||'';
+   state.kps=flatten(map.stages||[],[]);
+   const unlocked=state.kps.filter(function(k){return k.accessible;}), locked=state.kps.filter(function(k){return !k.accessible;});
+   rootSub.textContent=(state.course.course_name||'')+(state.course.current_topic_label?(' · 当前进度：'+state.course.current_topic_label):'');
+   let h='<span class="badge ok">已解锁 '+unlocked.length+'</span><div class="chipwrap">';
+   unlocked.forEach(function(k){ h+='<span class="chip unlocked'+(k.name===state.selected?' active':'')+'" data-kp="'+esc(k.name)+'">'+esc(k.label)+'</span>'; });
+   h+='</div><span class="badge lock">待解锁 '+locked.length+'</span><div class="chipwrap">';
+   locked.forEach(function(k){ h+='<span class="chip locked'+(k.name===state.selected?' active':'')+'" data-kp="'+esc(k.name)+'">'+esc(k.label)+'</span>'; });
    h+='</div>';
-   h+='<h2>知识点</h2>';
-   stages.forEach(function(s){
-     const p=prog[s.name]||{}; const total=Number(p.homework_total)||0, pass=Number(p.homework_pass)||0;
-     h+='<details class="kp"><summary><span class="tag '+(s.accessible?'open':'lock')+'">'+(s.accessible?'已解锁':'未解锁')+'</span><span style="flex:1;font-weight:600">'+esc(s.label)+'</span><span class="muted">作业 '+pass+'/'+total+'</span></summary><div style="padding:6px 0 0 24px">';
-     const children=Array.isArray(s.children)?s.children:[];
-     if(!children.length){ h+='<div class="muted">暂无子知识点</div>'; }
-     children.forEach(function(c){
-       const cp=prog[c.name]||{}; const ct=Number(cp.homework_total)||0, cpass=Number(cp.homework_pass)||0;
-       h+='<div class="row"><span class="name" style="width:150px">'+esc(c.label)+'</span><div class="bar"><i style="width:'+(ct?Math.round(cpass/ct*100):0)+'%;background:'+(c.accessible?'#67c23a':'#909399')+'"></i></div><span class="v">'+(ct?Math.round(cpass/ct*100):0)+'%</span></div>';
-     });
-     h+='</div></details>';
+   progressEl.innerHTML=h;
+   progressEl.querySelectorAll('.chip').forEach(function(c){ c.addEventListener('click',function(){ selectKp(c.getAttribute('data-kp')); }); });
+   highlight();
+ }
+ function highlight(){ progressEl.querySelectorAll('.chip').forEach(function(c){ c.classList.toggle('active', c.getAttribute('data-kp')===state.selected); }); }
+ function selectKp(kp){ if(!kp||kp===state.selected) return; state.selected=kp; highlight(); kpnameEl.textContent=(findKp(kp)||{}).label||kp; radarEl.innerHTML='<p class="muted">加载中…</p>'; metricsEl.innerHTML=''; vscode.postMessage({type:'knowledge', kpId:kp}); }
+ function findKp(kp){ return state.kps.find(function(k){return k.name===kp;}); }
+ function renderKnowledge(kpId,data){
+   const prof=(data&&data.capability_profile)||{}; const meta=(data&&data.capability_metadata)||{};
+   const kp=findKp(kpId)||{}; kpnameEl.textContent=kp.label||kpId;
+   const labels=DIMS.map(function(d){ return d+((meta[d]&&meta[d].status==='insufficient')?'（待积累）':''); });
+   radarEl.innerHTML=radar(labels, DIMS.map(function(d){return Number(prof[d])||0;}), '#0a84ff');
+   let h='';
+   DIMS.forEach(function(d){
+     const m=meta[d]||{}; const v=Number(prof[d])||0; const enough=m.status!=='insufficient';
+     h+='<div class="metric"><div class="dim">'+esc(d)+'</div><div class="score">'+(enough?Math.round(v*100)+' 分':'数据不足')+'</div><div class="samp">'+(m.sample_size!=null?m.sample_size:0)+'/'+(m.minimum_samples!=null?m.minimum_samples:0)+' 个有效样本</div><div class="samp">'+esc(m.message||'')+'</div></div>';
    });
-   root.innerHTML=h;
+   metricsEl.innerHTML=h;
  }
  window.addEventListener('message',function(e){ const m=e.data;
-   if(m.type==='data'){ render(m.data); }
-   else if(m.type==='loading'){ root.innerHTML='<p class="muted">加载中…</p>'; }
-   else if(m.type==='error'){ root.innerHTML='<p class="muted">加载失败：'+esc(m.text)+'</p>'; }
+   if(m.type==='map'){ renderMap(m.data,m.current); }
+   else if(m.type==='knowledge'){ renderKnowledge(m.kpId,m.data); }
+   else if(m.type==='knowledgeLoading'){ kpnameEl.textContent=(findKp(m.kpId)||{}).label||m.kpId; radarEl.innerHTML='<p class="muted">加载中…</p>'; metricsEl.innerHTML=''; highlight(); }
+   else if(m.type==='knowledgeError'){ radarEl.innerHTML='<p class="muted">加载失败：'+esc(m.text)+'</p>'; metricsEl.innerHTML=''; }
+   else if(m.type==='loading'){ rootSub.textContent='加载中…'; }
+   else if(m.type==='error'){ progressEl.innerHTML='<p class="muted">加载失败：'+esc(m.text)+'</p>'; }
  });
  vscode.postMessage({type:'ready'});
 </script></body></html>`;

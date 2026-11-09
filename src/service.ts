@@ -314,6 +314,12 @@ export class NuaaOjService implements ProblemPanelHost {
     await LearningMapPanel.show(this, this.extensionUri);
   }
 
+  async knowledge(kpId: string): Promise<any> {
+    const u = this.assistantUser();
+    if (!u) throw new OjError('请先登录。');
+    return this.auth.api.getKnowledgeCapability(u, kpId);
+  }
+
   // ---- Settings: profile / account -----------------------------------------
   private settingsInfo(): any {
     const u: any = this.auth.currentUser;

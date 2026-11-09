@@ -511,6 +511,10 @@ export class OjApi {
   async getCourseCurrentTopic(): Promise<any> {
     return this.request('/recommendation-api/course/current-topic');
   }
+
+  async getKnowledgeCapability(username: string, kpId: string): Promise<any> {
+    return this.request(`/recommendation-api/student_profile/${encodeURIComponent(username)}/knowledge/${encodeURIComponent(kpId)}`);
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }
