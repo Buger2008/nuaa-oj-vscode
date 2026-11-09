@@ -348,41 +348,81 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private mapProblemItem(p: any, st: number | undefined): any {
+    const sm = statusMeta(st === undefined ? -10 : st);
+    return {
+      id: p.problemId,
+      title: p.title,
+      difficulty: Number(p.difficulty) || 0,
+      dlabel: diffLabel(p.difficulty),
+      tip: statsTip(p),
+      ac: st === 0,
+      attempted: st !== undefined && st !== -10,
+      statusShort: sm.short,
+      statusColor: sm.color,
+    };
+  }
+
+  /** Load the full problem list once and cache it (with the user's status). */
+  private async fetchAllProblems(): Promise<any[]> {
+    if (this.problemsCache) return this.problemsCache;
+    const size = 500;
+    let page = 1;
+    let pages = 1;
+    const all: any[] = [];
+    do {
+      const res = await this.auth.api.getProblemList({ currentPage: page, limit: size });
+      all.push(...(res.records || []));
+      pages = res.pages || 1;
+      page++;
+    } while (page <= pages && page <= 50);
+    const stMap = await this.fetchStatusMap(all.map((p: any) => p.pid));
+    const items = all.map((p: any) => this.mapProblemItem(p, stMap.get(Number(p.pid))));
+    this.problemsCache = items;
+    this.problemsKeyword = '';
+    return items;
+  }
+
   private async getProblems(keyword: string): Promise<any> {
     if (!(await this.auth.ensureLoggedIn(false))) return { needLogin: true, items: [], total: 0 };
-    if (this.problemsCache && keyword === this.problemsKeyword) return { items: this.problemsCache, total: this.problemsCache.length };
+    const kwRaw = (keyword || '').trim();
+    const kw = kwRaw.toLowerCase();
+    if (!kw) {
+      try {
+        const items = await this.fetchAllProblems();
+        return { items, total: items.length };
+      } catch (e: any) {
+        return { error: e?.message ?? String(e), items: [], total: 0 };
+      }
+    }
+    // 1) Search the local cache first (instant, no network).
+    let cache = this.problemsCache;
+    if (!cache) {
+      try {
+        cache = await this.fetchAllProblems();
+      } catch {
+        /* fall through to server search */
+      }
+    }
+    if (cache && cache.length) {
+      const local = cache.filter((i: any) => String(i.id).toLowerCase().includes(kw) || String(i.title || '').toLowerCase().includes(kw));
+      if (local.length) return { items: local, total: local.length, local: true };
+    }
+    // 2) Fall back to a server-side search only when the cache has no match.
     try {
       const size = 500;
       let page = 1;
       let pages = 1;
       const all: any[] = [];
       do {
-        const res = await this.auth.api.getProblemList({ currentPage: page, limit: size, keyword: keyword || undefined });
+        const res = await this.auth.api.getProblemList({ currentPage: page, limit: size, keyword: kwRaw });
         all.push(...(res.records || []));
         pages = res.pages || 1;
         page++;
       } while (page <= pages && page <= 50);
       const stMap = await this.fetchStatusMap(all.map((p: any) => p.pid));
-      const items = all.map((p: any) => {
-        const st = stMap.get(Number(p.pid));
-        const sm = statusMeta(st === undefined ? -10 : st);
-        return {
-          id: p.problemId,
-          title: p.title,
-          difficulty: Number(p.difficulty) || 0,
-          dlabel: diffLabel(p.difficulty),
-          tip: statsTip(p),
-          ac: st === 0,
-          attempted: st !== undefined && st !== -10,
-          statusShort: sm.short,
-          statusColor: sm.color,
-        };
-      });
-      if (!keyword) {
-        this.problemsCache = items;
-        this.problemsKeyword = '';
-      }
-      return { items, total: items.length };
+      const items = all.map((p: any) => this.mapProblemItem(p, stMap.get(Number(p.pid))));
+      return { items, total: items.length, local: false };
     } catch (e: any) {
       return { error: e?.message ?? String(e), items: [], total: 0 };
     }
@@ -673,7 +713,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  function renderProblems(data, keyword){
    content.innerHTML='';
    const inp=el('input','search'); inp.placeholder='搜索题号 / 标题（回车）'; inp.value=keyword||'';
-   inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ vscode.postMessage({type:'search', keyword:inp.value}); } });
+   inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ inp.disabled=true; inp.placeholder='搜索中…'; vscode.postMessage({type:'search', keyword:inp.value}); } });
    content.appendChild(inp);
    if(data.needLogin){ needLogin(); return; }
    if(data.error){ error(data.error); return; }
@@ -985,4 +1025,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 </script></body></html>`;
   }
 }
+
+
 
