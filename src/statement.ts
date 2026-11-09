@@ -263,7 +263,7 @@ ${bodyHtml}
   if (langSel) langSel.addEventListener('change', () => vscode.postMessage({ type: 'changeLanguage', language: langSel.value }));
 
   function pill(status) {
-    const map = { AC:'#67c23a', WA:'#f56c6c', RE:'#f56c6c', TLE:'#f56c6c', CE:'#e6a23c', OK:'#409eff' };
+    const map = { AC:'#67c23a', WA:'#f56c6c', RE:'#f56c6c', TLE:'#f56c6c', CE:'#e6a23c', PE:'#e6a23c', OK:'#409eff' };
     return '<span class="pill" style="background:' + (map[status]||'#9e9e9e') + '">' + status + '</span>';
   }
   function pre(s) { return '<pre class="io">' + escapeHtml(s || '') + '</pre>'; }

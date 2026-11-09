@@ -362,8 +362,22 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         pages = res.pages || 1;
         page++;
       } while (page <= pages && page <= 50);
-      const acSet = await this.fetchAcSet(all.map((p: any) => p.pid));
-      const items = all.map((p: any) => ({ id: p.problemId, title: p.title, difficulty: Number(p.difficulty) || 0, dlabel: diffLabel(p.difficulty), tip: statsTip(p), ac: acSet.has(Number(p.pid)) }));
+      const stMap = await this.fetchStatusMap(all.map((p: any) => p.pid));
+      const items = all.map((p: any) => {
+        const st = stMap.get(Number(p.pid));
+        const sm = statusMeta(st === undefined ? -10 : st);
+        return {
+          id: p.problemId,
+          title: p.title,
+          difficulty: Number(p.difficulty) || 0,
+          dlabel: diffLabel(p.difficulty),
+          tip: statsTip(p),
+          ac: st === 0,
+          attempted: st !== undefined && st !== -10,
+          statusShort: sm.short,
+          statusColor: sm.color,
+        };
+      });
       if (!keyword) {
         this.problemsCache = items;
         this.problemsKeyword = '';
@@ -374,8 +388,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async fetchAcSet(pids: any[]): Promise<Set<number>> {
-    const set = new Set<number>();
+  private async fetchStatusMap(pids: any[]): Promise<Map<number, number | undefined>> {
+    const map = new Map<number, number | undefined>();
     const ids = Array.from(new Set(pids.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0)));
     const chunk = 300;
     for (let i = 0; i < ids.length; i += chunk) {
@@ -384,13 +398,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         for (const k of Object.keys(res || {})) {
           const v: any = (res as any)[k];
           const st = v && typeof v === 'object' ? v.status : v;
-          if (Number(st) === 0) set.add(Number(k));
+          map.set(Number(k), st === null || st === undefined ? undefined : Number(st));
         }
       } catch {
         /* ignore */
       }
     }
-    return set;
+    return map;
   }
 
   private async getTrainings(): Promise<any> {
@@ -410,8 +424,23 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) return;
     try {
       const probs = await this.auth.api.getTrainingProblemList(tid);
-      const acSet = await this.fetchAcSet(probs.map((p: any) => p.pid));
-      const items = probs.map((p: any) => ({ id: p.problemId, title: p.title, difficulty: Number(p.difficulty) || 0, dlabel: diffLabel(p.difficulty), tip: statsTip(p), ac: acSet.has(Number(p.pid)), value: `training/${tid}/problem/${p.problemId}` }));
+      const stMap = await this.fetchStatusMap(probs.map((p: any) => p.pid));
+      const items = probs.map((p: any) => {
+        const st = stMap.get(Number(p.pid));
+        const sm = statusMeta(st === undefined ? -10 : st);
+        return {
+          id: p.problemId,
+          title: p.title,
+          difficulty: Number(p.difficulty) || 0,
+          dlabel: diffLabel(p.difficulty),
+          tip: statsTip(p),
+          ac: st === 0,
+          attempted: st !== undefined && st !== -10,
+          statusShort: sm.short,
+          statusColor: sm.color,
+          value: `training/${tid}/problem/${p.problemId}`,
+        };
+      });
       this.view.webview.postMessage({ type: 'trainingProblems', tid, items });
     } catch (e: any) {
       this.view.webview.postMessage({ type: 'trainingProblems', tid, error: e?.message ?? String(e), items: [] });
@@ -431,7 +460,22 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const stages: any[] = Array.isArray(d?.stages) ? d.stages : [];
       const chapters: any[] = [];
       const seen = new Set<string>();
-      const mapProb = (p: any) => ({ id: p.problem_id, title: p.title, ac: !!p.ac, attempted: !!p.attempted });
+      const allProblems = await this.getProblems('');
+      const byId = new Map<string, any>((allProblems.items || []).map((i: any) => [String(i.id), i]));
+      const mapProb = (p: any) => {
+        const m = byId.get(String(p.problem_id));
+        return {
+          id: p.problem_id,
+          title: m ? m.title : p.title,
+          difficulty: m ? m.difficulty : 0,
+          dlabel: m ? m.dlabel : '',
+          tip: m ? m.tip : '',
+          ac: m ? m.ac : !!p.ac,
+          attempted: m ? m.attempted : !!p.attempted,
+          statusShort: m ? m.statusShort : '',
+          statusColor: m ? m.statusColor : '',
+        };
+      };
       const add = (name: string, label: string, hw: any[], pr: any[]) => {
         const pp = prog[name] || {};
         chapters.push({
@@ -634,7 +678,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(data.needLogin){ needLogin(); return; }
    if(data.error){ error(data.error); return; }
    const list=el('div');
-   (data.items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel||'')); it.appendChild(el('span','t',p.title)); if(p.ac) it.appendChild(el('span','ok','✓')); it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); list.appendChild(it); });
+   (data.items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel||'')); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'尝试'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); list.appendChild(it); });
    content.appendChild(list);
    if(!(data.items||[]).length) content.appendChild(el('div','empty','没有找到题目。'));
  }
@@ -645,7 +689,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(!box) return;
    box.innerHTML='';
    if(err){ box.appendChild(el('div','err',err)); return; }
-   (items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel||'')); it.appendChild(el('span','t',p.title)); if(p.ac) it.appendChild(el('span','ok','✓')); it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.value})); box.appendChild(it); });
+   (items||[]).forEach((p)=>{ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel||'')); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'尝试'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.value})); box.appendChild(it); });
    if(!(items||[]).length) box.appendChild(el('div','empty','该题单暂无题目。'));
  }
  function renderTrainings(data){
@@ -689,7 +733,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    });
    if(!(data.chapters||[]).length) content.appendChild(el('div','empty','当前课程暂无作业。'));
  }
- function probItem(p){ const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','t',p.title)); if(p.ac) it.appendChild(el('span','ok','✓')); else if(p.attempted) it.appendChild(el('span','muted','未通过')); it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); return it; }
+ function probItem(p){ const it=el('div','item'); it.appendChild(el('span','id',p.id)); if(p.dlabel) it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel)); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'未通过'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); return it; }
  // 我的
  function renderMy(user){
    content.innerHTML='';

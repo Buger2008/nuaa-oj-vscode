@@ -4,7 +4,7 @@ import { baseTempDir } from './tempDir';
 import * as path from 'path';
 import { Sample } from './samples';
 
-export type CaseStatus = 'AC' | 'WA' | 'RE' | 'TLE' | 'CE' | 'OK';
+export type CaseStatus = 'AC' | 'WA' | 'PE' | 'RE' | 'TLE' | 'CE' | 'OK';
 
 export interface CaseResult {
   index: number;
@@ -129,14 +129,18 @@ function normalize(s: string): string {
     .replace(/\n+$/g, '');
 }
 
-function compare(expected: string, actual: string): boolean {
-  if (normalize(expected) === normalize(actual)) return true;
-  const tok = (s: string) => normalize(s).split(/\s+/).filter(Boolean);
-  const a = tok(expected);
-  const b = tok(actual);
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
+/**
+ * Mirrors HOJ's default judge: compare after normalizing CRLF and trailing spaces on each
+ * line / trailing blank lines. Line structure (newlines) matters; a difference that is only
+ * whitespace becomes Presentation Error (PE), anything else is WA.
+ */
+function judgeStatus(expected: string, actual: string): 'AC' | 'PE' | 'WA' {
+  const e = normalize(expected);
+  const a = normalize(actual);
+  if (e === a) return 'AC';
+  const stripWs = (s: string) => s.replace(/\s+/g, '');
+  if (stripWs(e) === stripWs(a)) return 'PE';
+  return 'WA';
 }
 
 interface Plan {
@@ -356,8 +360,7 @@ export async function runSamples(
       if (r.spawnError) status = 'RE';
       else if (r.timedOut) status = 'TLE';
       else if (r.code !== 0) status = 'RE';
-      else if (compare(sample.output, actual)) status = 'AC';
-      else status = 'WA';
+      else status = judgeStatus(sample.output, actual);
       cases.push({
         index: i + 1,
         input: sample.input,
