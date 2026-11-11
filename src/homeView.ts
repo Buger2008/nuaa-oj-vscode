@@ -15,6 +15,7 @@ export interface HomeCallbacks {
   openLearning: () => void;
   openUser: (uid: string, username: string) => void;
   openSubmission: (submitId: number) => void;
+  cleanAccepted: () => void;
   onChange?: () => void;
 }
 
@@ -165,6 +166,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'openSubmission':
         this.cb.openSubmission(Number(m.submitId));
+        break;
+      case 'cleanAccepted':
+        this.cb.cleanAccepted();
         break;
       case 'openProblem':
         await this.cb.openProblem(String(m.value));
@@ -799,6 +803,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    function row(icon, label, fn){ const r=el('div','mrow'); r.appendChild(el('span','micon',icon)); r.appendChild(el('span','mlabel',label)); r.appendChild(el('span','mchev','›')); r.addEventListener('click',fn); menu.appendChild(r); }
    row('👤', '我的主页', function(){ vscode.postMessage({type:'openMyHome'}); });
    row('📥', '我的提交', function(){ openMySubs(); });
+   row('🧹', '清理已通过代码', function(){ vscode.postMessage({type:'cleanAccepted'}); });
    row('🧭', '学径', function(){ vscode.postMessage({type:'openLearning'}); });
    row('🔔', '系统通知', function(){ vscode.postMessage({type:'openMessages'}); });
    row('⚙️', '设置', function(){ vscode.postMessage({type:'openSettings'}); });

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { AuthManager } from './auth';
 import { OjError } from './api';
 import { RecordsPanel } from './recordsPanel';
@@ -23,6 +24,7 @@ import {
   problemFolderUri,
   saveContext,
   submissionLanguage,
+  workspaceRoot,
 } from './context';
 import { extractTemplateCode } from './codeExtract';
 import { resolveCCompiler, resolveCppCompiler } from './toolchain';
@@ -418,6 +420,115 @@ export class NuaaOjService implements ProblemPanelHost {
     }
     if (typeof r === 'string') return this.absoluteUrl(r);
     return this.absoluteUrl((this.auth.currentUser as any)?.avatar);
+  }
+
+  /** Delete local folders/files for problems the user has already AC'd, and prune empty dirs. */
+  async cleanAcceptedCode(): Promise<void> {
+    if (!(await this.auth.ensureLoggedIn())) return;
+    const rootBase = workspaceRoot();
+    if (!rootBase) {
+      vscode.window.showWarningMessage('没有找到工作区，无法清理本地题目文件夹。');
+      return;
+    }
+    const folder = vscode.workspace.getConfiguration('nuaaOj').get<string>('problemFolder', 'NUAA-OJ');
+    const root = path.join(rootBase.fsPath, folder);
+    if (!fs.existsSync(root)) {
+      vscode.window.showInformationMessage('本地没有题目文件夹，无需清理。');
+      return;
+    }
+    try {
+      const all: any[] = [];
+      let page = 1;
+      let pages = 1;
+      do {
+        const res = await this.auth.api.getProblemList({ currentPage: page, limit: 500 });
+        all.push(...(res.records || []));
+        pages = res.pages || 1;
+        page++;
+      } while (page <= pages && page <= 50);
+      const displayToPid = new Map<string, number>();
+      for (const p of all) displayToPid.set(String(p.problemId), Number(p.pid));
+      const pids = Array.from(new Set(Array.from(displayToPid.values()).filter((n) => Number.isFinite(n) && n > 0)));
+      const acSet = new Set<number>();
+      const chunk = 300;
+      for (let i = 0; i < pids.length; i += chunk) {
+        const st = await this.auth.api.getUserProblemStatus(pids.slice(i, i + chunk));
+        for (const k of Object.keys(st || {})) {
+          const v: any = (st as any)[k];
+          const s = v && typeof v === 'object' ? v.status : v;
+          if (Number(s) === 0) acSet.add(Number(k));
+        }
+      }
+      const ids = Array.from(displayToPid.keys()).sort((a, b) => b.length - a.length);
+      const dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory());
+      const targets: string[] = [];
+      for (const d of dirs) {
+        const name = d.name;
+        let id: string | undefined;
+        if (displayToPid.has(name)) id = name;
+        else {
+          for (const k of ids) {
+            if (name.startsWith(k + ' ')) { id = k; break; }
+          }
+        }
+        if (id && acSet.has(Number(displayToPid.get(id)))) targets.push(path.join(root, name));
+      }
+      if (!targets.length) {
+        // Still prune any empty folders.
+        const removedEmpty = await this.removeEmptyDirs(root);
+        vscode.window.showInformationMessage(removedEmpty ? `没有已通过的题目文件夹，已移除 ${removedEmpty} 个空文件夹。` : '没有需要清理的已通过题目。');
+        return;
+      }
+      const pick = await vscode.window.showWarningMessage(
+        `将删除 ${targets.length} 个“已通过”题目的本地文件夹（含代码文件），并清理空文件夹。此操作不可撤销，建议先关闭相关文件。确定清理吗？`,
+        { modal: true },
+        '清理',
+      );
+      if (pick !== '清理') return;
+      let files = 0;
+      for (const dir of targets) {
+        files += this.countFilesRec(dir);
+        try { await fs.promises.rm(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
+      const removedEmpty = await this.removeEmptyDirs(root);
+      this.onDataChanged();
+      vscode.window.showInformationMessage(`已清理 ${targets.length} 个题目文件夹（${files} 个文件），并移除 ${removedEmpty} 个空文件夹。`);
+    } catch (e: any) {
+      vscode.window.showWarningMessage(`清理失败：${e?.message ?? e}`);
+    }
+  }
+
+  private countFilesRec(dir: string): number {
+    let n = 0;
+    try {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) n += this.countFilesRec(path.join(dir, e.name));
+        else n++;
+      }
+    } catch { /* ignore */ }
+    return n;
+  }
+
+  private async removeEmptyDirs(root: string): Promise<number> {
+    let removed = 0;
+    const walk = async (dir: string): Promise<boolean> => {
+      let entries: fs.Dirent[] = [];
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return false; }
+      let hasContent = false;
+      for (const e of entries) {
+        if (e.isDirectory()) {
+          const childEmpty = await walk(path.join(dir, e.name));
+          if (!childEmpty) hasContent = true;
+        } else hasContent = true;
+      }
+      if (!hasContent && dir !== root) {
+        try { await fs.promises.rmdir(dir); removed++; } catch { /* ignore */ }
+        return true;
+      }
+      return !hasContent;
+    };
+    await walk(root);
+    return removed;
   }
 
   async openSettings(): Promise<void> {
