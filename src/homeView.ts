@@ -765,12 +765,14 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(data.error){ error(data.error); return; }
    if(data.course) content.appendChild(el('div','muted','课程：'+data.course));
    (data.chapters||[]).forEach((c)=>{
-     const det=el('details'); const sum=el('summary','folder'); sum.appendChild(el('span',null,c.label+(c.current?'（当前）':''))); sum.appendChild(el('span','badge','作业 '+c.pass+'/'+c.total)); det.appendChild(sum);
+     const det=el('details'); det.setAttribute('data-chapter', c.label); if(reopenHomeworkLabels.indexOf(c.label) >= 0) det.open=true;
+     const sum=el('summary','folder'); sum.appendChild(el('span',null,c.label+(c.current?'（当前）':''))); sum.appendChild(el('span','badge','作业 '+c.pass+'/'+c.total)); det.appendChild(sum);
      const box=el('div','children');
      (c.homework||[]).forEach((p)=>box.appendChild(probItem(p,'作业')));
      if((c.practice||[]).length){ box.appendChild(el('div','muted','练习')); (c.practice||[]).forEach((p)=>box.appendChild(probItem(p,'练'))); }
      det.appendChild(box); content.appendChild(det);
    });
+   reopenHomeworkLabels = [];
    if(!(data.chapters||[]).length) content.appendChild(el('div','empty','当前课程暂无作业。'));
  }
  function probItem(p){ const it=el('div','item'); it.appendChild(el('span','id',p.id)); if(p.dlabel) it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel)); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'未通过'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); return it; }
@@ -804,6 +806,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  let rankChartType = 'bar';
  let statusMode = 'formal';
  let reopenTrainingTids = [];
+ let reopenHomeworkLabels = [];
  let lastRankData = null, lastRankFilters = null;
  function rankLegend(kind){ return kind==='acm' ? '<div class="rlegend"><span style="color:#0a84ff">■ AC</span> <span style="color:#909399">■ Total</span></div>' : '<div class="rlegend"><span style="color:#8b5cf6">■ Score</span></div>'; }
  function barSpan(v,max,color){ const w=Math.max(2,Math.round(v/max*100)); return '<div class="rbarwrap"><div class="rbar" style="width:'+w+'%;background:'+color+'"></div><span class="rbarval">'+v+'</span></div>'; }
@@ -1016,7 +1019,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
-   else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab}); }
+   else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } else if(activeTab==='homework'){ reopenHomeworkLabels = Array.prototype.slice.call(content.querySelectorAll('details[data-chapter]')).filter(function(d){ return d.open; }).map(function(d){ return d.getAttribute('data-chapter'); }); } vscode.postMessage({type:'tab',tab:activeTab}); }
    else if(m.type==='focusSearch'){ const i=document.querySelector('input.search'); if(i) i.focus(); }
    else if(m.type==='error'){ error(m.text); }
  });
