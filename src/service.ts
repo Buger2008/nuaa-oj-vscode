@@ -843,7 +843,10 @@ export class NuaaOjService implements ProblemPanelHost {
     const editor = vscode.window.activeTextEditor;
     if (editor && editor.document.uri.scheme === 'file') {
       const edir = vscode.Uri.joinPath(editor.document.uri, '..');
-      if (edir.fsPath.toLowerCase() === folder.fsPath.toLowerCase()) {
+      const same = process.platform === 'win32'
+        ? edir.fsPath.toLowerCase() === folder.fsPath.toLowerCase()
+        : edir.fsPath === folder.fsPath;
+      if (same) {
         return editor.document.uri;
       }
     }

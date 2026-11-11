@@ -108,6 +108,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const requireContext = async (): Promise<ProblemContext | undefined> => {
+    // Prefer the last known problem context. When focus is on a webview (题面/AI/记录等),
+    // VS Code has no active text editor, but the user still means the problem they were
+    // just working on, so do not fall back to asking for a problem number.
+    const remembered = currentProvider.current;
+    if (remembered) {
+      const file = await service.getSolutionUri(remembered);
+      if (file) {
+        setCurrent(remembered);
+        return remembered;
+      }
+    }
     const ctx = await service.contextFromActiveEditor();
     if (ctx) {
       setCurrent(ctx);
@@ -309,6 +320,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   reg('nuaaOj.openAssistantGeneral', async () => {
     await service.openAssistantGeneral();
+  });
+
+  reg('nuaaOj.debugSolution', async () => {
+    let ctx = currentProvider.current;
+    if (!ctx) ctx = await service.contextFromActiveEditor();
+    if (!ctx) {
+      vscode.window.showInformationMessage('请先打开一个题目。');
+      return;
+    }
+    const file = await service.getSolutionUri(ctx);
+    if (!file) {
+      vscode.window.showWarningMessage('未找到该题目的代码文件。');
+      return;
+    }
+    await vscode.window.showTextDocument(file, { preview: false, viewColumn: vscode.ViewColumn.One });
+    // Start debugging as if F5 was pressed on the source file.
+    await vscode.commands.executeCommand('workbench.action.debug.start');
   });
 
   reg('nuaaOj.loadLastAcceptedCode', async () => {    const ctx = currentProvider.current || (await service.contextFromActiveEditor());
