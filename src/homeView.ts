@@ -503,19 +503,24 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const stages: any[] = Array.isArray(d?.stages) ? d.stages : [];
       const chapters: any[] = [];
       const seen = new Set<string>();
-      // Homework completion must come from the course/homework data itself (learning-map),
-      // not from submission history, which can be stale or from a previous term.
-      const mapProb = (p: any) => ({
-        id: p.problem_id,
-        title: p.title,
-        difficulty: Number(p.difficulty) || 0,
-        dlabel: diffLabel(p.difficulty),
-        tip: '',
-        ac: !!p.ac,
-        attempted: !!p.attempted,
-        statusShort: p.ac ? 'AC' : p.attempted ? '未完成' : '',
-        statusColor: p.ac ? '#67c23a' : '#f56c6c',
-      });
+      // Completion (ac/attempted) comes from the course/homework data itself (learning-map);
+      // submission statistics (tooltip) are enriched from the same problem data as 自由练习.
+      const allProblems = await this.getProblems('');
+      const statById = new Map<string, any>((allProblems.items || []).map((i: any) => [String(i.id), i]));
+      const mapProb = (p: any) => {
+        const m = statById.get(String(p.problem_id));
+        return {
+          id: p.problem_id,
+          title: m ? m.title : p.title,
+          difficulty: m ? m.difficulty : Number(p.difficulty) || 0,
+          dlabel: m ? m.dlabel : diffLabel(p.difficulty),
+          tip: m ? m.tip : '',
+          ac: !!p.ac,
+          attempted: !!p.attempted || (m ? !!m.attempted : false),
+          statusShort: p.ac ? 'AC' : m && m.attempted ? m.statusShort : p.attempted ? '未完成' : '',
+          statusColor: p.ac ? '#67c23a' : m && m.attempted ? m.statusColor : '#f56c6c',
+        };
+      };
       const add = (name: string, label: string, hw: any[], pr: any[]) => {
         const pp = prog[name] || {};
         chapters.push({
