@@ -5,7 +5,7 @@ export interface AssistantHost {
   getContext(ctx: ProblemContext): Promise<any>;
   getSessions(): Promise<any[]>;
   getSession(sessionId: string): Promise<any[]>;
-  ask(ctx: ProblemContext, question: string, sessionId: string, onEvent: (ev: any) => void, signal: AbortSignal): Promise<void>;
+  ask(ctx: ProblemContext, question: string, sessionId: string, onEvent: (ev: any) => void, signal: AbortSignal, extra?: any, action?: string): Promise<void>;
   openExternal(url: string): void;
 }
 
@@ -16,7 +16,7 @@ function esc(s: any): string {
 export class AssistantPanel {
   private static map = new Map<string, AssistantPanel>();
   private disposables: vscode.Disposable[] = [];
-  private messages: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+  private messages: Array<{ role: 'user' | 'assistant'; text: string; meta?: any }> = [];
   private sessions: any[] = [];
   private sessionId = '';
   private streaming = false;
@@ -106,6 +106,9 @@ export class AssistantPanel {
       case 'ask':
         await this.ask(String(m.question ?? ''));
         break;
+      case 'askAction':
+        await this.ask(String(m.text ?? m.question ?? ''), String(m.action || 'ask'), (m.extra && typeof m.extra === 'object') ? m.extra : {});
+        break;
       case 'newSession':
         this.sessionId = '';
         this.messages = [];
@@ -139,7 +142,7 @@ export class AssistantPanel {
     }
   }
 
-  private async ask(question: string): Promise<void> {
+  private async ask(question: string, action = 'ask', extra: any = {}): Promise<void> {
     const q = question.trim();
     if (!q || this.streaming) return;
     this.messages.push({ role: 'user', text: q });
@@ -155,11 +158,13 @@ export class AssistantPanel {
           this.post({ type: 'chunk', text: ev.t });
         } else if (ev && ev.meta) {
           if (ev.meta.session_id) this.sessionId = String(ev.meta.session_id);
-          if (ev.meta.mode) this.post({ type: 'mode', mode: String(ev.meta.mode) });
+          const last = this.messages[this.messages.length - 1];
+          if (last && last.role === 'assistant') last.meta = ev.meta;
+          this.post({ type: 'meta', meta: ev.meta });
         } else if (ev && ev.session_id) {
           this.sessionId = String(ev.session_id);
         }
-      }, this.controller.signal);
+      }, this.controller.signal, extra, action);
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         const last = this.messages[this.messages.length - 1];
@@ -209,6 +214,9 @@ export class AssistantPanel {
  .msg.md ul,.msg.md ol{margin:6px 0;padding-left:20px;}
  .msg.md h1,.msg.md h2,.msg.md h3{font-size:13.5px;margin:8px 0 4px;}
  .msg.md a{color:var(--vscode-textLink-foreground);}
+ .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+ .act{font-family:inherit;font-size:12px;padding:4px 10px;border-radius:14px;border:1px solid var(--vscode-button-border,var(--vscode-panel-border));background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer;}
+ .act:hover{background:var(--vscode-button-background);color:var(--vscode-button-foreground);}
  .composer{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--vscode-panel-border);}
  textarea{flex:1;resize:none;height:60px;font-family:inherit;font-size:13px;padding:8px;border-radius:6px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));background:var(--vscode-input-background);color:var(--vscode-input-foreground);}
  .hint{font-size:11px;color:var(--vscode-descriptionForeground);padding:0 12px 6px;}
@@ -234,12 +242,22 @@ export class AssistantPanel {
  const ctxbar = document.getElementById('ctxbar');
  let state = { messages: [], streaming: false, sessionId: '', problemId: '' };
  const md = (window.markdownit ? window.markdownit({breaks:true, linkify:true}) : null);
+ function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+ function actionHtml(m){
+   if(!m.meta) return '';
+   const mode=m.meta.mode; let e='';
+   if(mode==='switch_required'){ e+='<button class="act" data-action="switch_problem" data-text="确认切换到这道题，请从第一步开始引导我。">切换到这道题</button>'; }
+   if(mode==='confirm_language'){ const choices=(m.meta.language_context&&m.meta.language_context.choices)||['Python','C','C++','Java']; choices.forEach(function(l){ e+='<button class="act" data-action="ask" data-text="'+esc('本次使用 '+l)+'" data-extra="'+esc(JSON.stringify({language:l}))+'">'+esc(l)+'</button>'; }); }
+   (m.meta.candidates||[]).forEach(function(c){ if(!c||!c.problem_id) return; const txt='我问的是 '+c.problem_id+'《'+(c.title||'')+'》，请引导我解题。'; e+='<button class="act" data-action="ask" data-text="'+esc(txt)+'" data-extra="'+esc(JSON.stringify({confirmed_problem_id:c.problem_id}))+'">'+esc(c.problem_id+' · '+(c.title||''))+'</button>'; });
+   if((mode==='guided'||mode==='guided_fallback') && !m.meta.quota_exhausted && !m.meta.awaiting_new_submission){ e+='<button class="act" data-action="more_hint" data-text="请再给一点提示">继续提示</button>'; }
+   return e ? '<div class="acts">'+e+'</div>' : '';
+ }
  function renderMsg(m){
    const d=document.createElement('div');
    d.className='msg '+m.role;
    if(state.streaming && m.role==='assistant' && !m.final) d.classList.add('streaming');
-   if(m.role==='assistant' && m.final && md){ d.classList.add('md'); d.innerHTML=md.render(m.text||''); }
+   if(m.role==='assistant' && m.final && md){ d.classList.add('md'); d.innerHTML=md.render(m.text||'')+actionHtml(m); }
    else if(m.role==='assistant'){ d.textContent=(m.text||'').slice(0, m.shown||0); }
    else { d.textContent=m.text||''; }
    return d;
@@ -247,7 +265,15 @@ export class AssistantPanel {
  function renderMsgs(){
    msgsEl.innerHTML='';
    state.messages.forEach(function(m){ msgsEl.appendChild(renderMsg(m)); });
+   msgsEl.querySelectorAll('button.act').forEach(function(b){ b.addEventListener('click',function(){ sendAction(b.getAttribute('data-action'), b.getAttribute('data-text'), JSON.parse(b.getAttribute('data-extra')||'{}')); }); });
    msgsEl.scrollTop = msgsEl.scrollHeight;
+ }
+ function sendAction(action, text, extra){
+   if(state.streaming) return;
+   state.messages.push({role:'user', text:text});
+   state.messages.push({role:'assistant', text:'', shown:0, final:false});
+   state.streaming=true; renderMsgs();
+   vscode.postMessage({type:'askAction', action:action, text:text, extra:extra||{}});
  }
  function tick(){
    let changed=false;
@@ -292,7 +318,8 @@ export class AssistantPanel {
    else if(m.type==='context'){ if(!state.problemId){ ctxbar.textContent='通用 AI 助手 · 可直接提问任何编程问题'; } else if(m.error){ ctxbar.textContent='上下文加载失败：'+m.error; } else { let s='题目已载入'; if(m.latest){ s+=' · 最近提交 #'+m.latest.submit_id+' '+(m.latest.status_name||''); } else if(!m.latestAvailable){ s+=' · 暂无提交记录'; } ctxbar.textContent=s; } }
    else if(m.type==='messages'){ state.messages=(m.messages||[]).map(function(x){ return {role:x.role, text:x.text, shown:(x.text||'').length, final:true}; }); state.streaming=false; if(m.sessionId) state.sessionId=m.sessionId; renderMsgs(); }
    else if(m.type==='assistantStart'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(!last||last.role!=='assistant'||last.final){ state.messages.push({role:'assistant',text:'',shown:0,final:false}); } renderMsgs(); }
-   else if(m.type==='chunk'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'){ last.text+=m.text; } renderMsgs(); }
+   else if(m.type==='meta'){ const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'){ last.meta=m.meta; } renderMsgs(); }
+ else if(m.type==='chunk'){ state.streaming=true; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'){ last.text+=m.text; } renderMsgs(); }
    else if(m.type==='done'){ state.streaming=false; if(m.sessionId) state.sessionId=m.sessionId; renderMsgs(); }
    else if(m.type==='sessions'){ renderSessions(m.list); }
    else if(m.type==='error'){ state.streaming=false; const last=state.messages[state.messages.length-1]; if(last&&last.role==='assistant'&&!last.text){ last.text='（出错：'+m.text+'）'; last.shown=last.text.length; last.final=true; } renderMsgs(); }

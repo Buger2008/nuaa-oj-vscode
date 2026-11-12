@@ -247,14 +247,24 @@ export class NuaaOjService implements ProblemPanelHost {
     sessionId: string,
     onEvent: (ev: any) => void,
     signal: AbortSignal,
+    extra: any = {},
+    action = 'ask',
   ): Promise<void> {
     const u = this.assistantUser();
     if (!u) throw new OjError('请先登录。');
-    const payload: any = { question, session_id: sessionId || '', action: 'ask', activity_type: '', activity_id: '', group_id: '' };
+    const payload: any = {
+      question,
+      session_id: sessionId || '',
+      action,
+      activity_type: '',
+      activity_id: '',
+      group_id: '',
+      ...extra,
+    };
     if (ctx.displayId) {
       payload.problem_id = ctx.displayId;
-      payload.require_guided = true;
-    } else {
+      if (payload.require_guided === undefined) payload.require_guided = true;
+    } else if (payload.require_guided === undefined) {
       payload.require_guided = false;
     }
     return this.auth.api.assistantAskStream(u, payload, onEvent, signal);
