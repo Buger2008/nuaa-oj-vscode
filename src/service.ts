@@ -267,6 +267,17 @@ export class NuaaOjService implements ProblemPanelHost {
     } else if (payload.require_guided === undefined) {
       payload.require_guided = false;
     }
+    // Send the language upfront so the assistant never has to ask "which language?".
+    if (payload.language === undefined) {
+      let lang = (ctx as any).selectedLanguage || (ctx as any).language || '';
+      if (!lang) {
+        const ed = vscode.window.activeTextEditor;
+        if (ed) lang = extensionToLanguage(path.extname(ed.document.uri.fsPath).toLowerCase()) || '';
+      }
+      if (!lang) lang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
+      const base = String(lang).replace(/\s*(With O2|\d+)\s*$/i, '').trim();
+      payload.language = /^c\+\+/i.test(base) ? 'C++' : /^c$/i.test(base) ? 'C' : /^python/i.test(base) ? 'Python' : /^java/i.test(base) ? 'Java' : base;
+    }
     return this.auth.api.assistantAskStream(u, payload, onEvent, signal);
   }
 
