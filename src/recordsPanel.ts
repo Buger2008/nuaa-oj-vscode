@@ -11,6 +11,7 @@ export interface RecordsHost {
   submissionUrl(submitId: number): string;
   openExternal(url: string): void;
   copyText(text: string): void;
+  openUserHome(uid: string, username: string): Promise<void> | void;
 }
 
 function esc(s: any): string {
@@ -121,6 +122,7 @@ export class RecordsPanel {
         else if (m?.type === 'back') { this.detailId = null; this.detail = null; this.render(); }
         else if (m?.type === 'copyCode') this.host.copyText(String(m.code ?? ''));
         else if (m?.type === 'apply') await this.host.applySubmission(this.ctx, Number(m.submitId));
+        else if (m?.type === 'user') await this.host.openUserHome(String(m.uid || ''), String(m.username || ''));
       },
       null,
       this.disposables,
@@ -182,6 +184,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
  document.querySelectorAll('[data-refresh]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'refresh'})));
  document.querySelectorAll('tr.row').forEach((r)=>r.addEventListener('click',()=>vscode.postMessage({type:'open',url:r.getAttribute('data-url')})));
  document.querySelectorAll('a.runid').forEach((a)=>a.addEventListener('click',(e)=>{e.stopPropagation();vscode.postMessage({type:'detail',submitId:a.getAttribute('data-rid')});}));
+ document.querySelectorAll('a.userlink').forEach((a)=>a.addEventListener('click',(e)=>{e.stopPropagation();vscode.postMessage({type:'user',uid:a.getAttribute('data-uid'),username:a.getAttribute('data-user')});}));
  document.querySelectorAll('[data-back]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'back'})));
  document.querySelectorAll('[data-copy]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'copyCode',code:b.getAttribute('data-copy')})));
  document.querySelectorAll('[data-open]').forEach((b)=>b.addEventListener('click',()=>vscode.postMessage({type:'open',url:b.getAttribute('data-open')})));
@@ -205,6 +208,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
  th{position:sticky;top:0;background:var(--vscode-editor-background);}
  tr.row{cursor:pointer;} tr.row:hover{background:rgba(127,127,127,.12);}
  a.runid{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
+ a.userlink{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
  .pill{display:inline-block;color:#fff;border-radius:10px;padding:0 8px;font-weight:700;font-size:11px;}
  .muted{color:var(--vscode-descriptionForeground);} .err{color:#f56c6c;}
  .detail{max-width:900px;}
@@ -250,7 +254,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
             return (
               `<tr class="row" data-url="${esc(url)}">` +
               `<td><a class="runid" data-rid="${r.submitId}" title="点击查看详情（运行时间等）">#${r.submitId}</a></td>` +
-              (showUser ? `<td>${esc(r.username || '')}</td>` : '') +
+              (showUser ? `<td>${r.uid ? `<a class="userlink" data-uid="${esc(r.uid)}" data-user="${esc(r.username || '')}" title="打开个人主页">${esc(r.username || '')}</a>` : esc(r.username || '')}</td>` : '') +
               `<td><span class="pill" style="background:${st.color}">${st.short}</span> ${esc(st.name)}</td>` +
               `<td>${r.time ?? '-'} ms</td><td>${r.memory ?? '-'} KB</td><td>${esc(r.language || '')}</td><td>${r.score ?? '-'}</td>` +
               `<td>${esc(fmtTime(r.submitTime))}</td></tr>`
@@ -313,7 +317,7 @@ ${this.detailId != null ? this.renderDetail() : this.renderList()}
         `<div class="k">内存</div><div>${sub.memory ?? '-'} KB</div>` +
         `<div class="k">语言</div><div>${esc(sub.language || '')}</div>` +
         `<div class="k">得分</div><div>${sub.score ?? '-'}</div>` +
-        `<div class="k">用户</div><div>${esc(sub.username || '')}</div>` +
+        `<div class="k">用户</div><div>${sub.uid ? `<a class="userlink" data-uid="${esc(sub.uid)}" data-user="${esc(sub.username || '')}" title="打开个人主页">${esc(sub.username || '')}</a>` : esc(sub.username || '')}</div>` +
         `<div class="k">提交时间</div><div>${esc(fmtTime(sub.submitTime))}</div>` +
         (sub.errorMessage && sub.status !== 0 ? `<div class="k">信息</div><div>${esc(sub.errorMessage)}</div>` : '') +
         `</div>` +

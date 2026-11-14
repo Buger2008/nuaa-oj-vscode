@@ -463,41 +463,53 @@ export class NuaaOjService implements ProblemPanelHost {
       return;
     }
     try {
-      const all: any[] = [];
-      let page = 1;
-      let pages = 1;
-      do {
-        const res = await this.auth.api.getProblemList({ currentPage: page, limit: 500 });
-        all.push(...(res.records || []));
-        pages = res.pages || 1;
-        page++;
-      } while (page <= pages && page <= 50);
-      const displayToPid = new Map<string, number>();
-      for (const p of all) displayToPid.set(String(p.problemId), Number(p.pid));
-      const pids = Array.from(new Set(Array.from(displayToPid.values()).filter((n) => Number.isFinite(n) && n > 0)));
-      const acSet = new Set<number>();
-      const chunk = 300;
-      for (let i = 0; i < pids.length; i += chunk) {
-        const st = await this.auth.api.getUserProblemStatus(pids.slice(i, i + chunk));
-        for (const k of Object.keys(st || {})) {
-          const v: any = (st as any)[k];
-          const s = v && typeof v === 'object' ? v.status : v;
-          if (Number(s) === 0) acSet.add(Number(k));
-        }
+      const dirs = (await fs.promises.readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory());
+      if (!dirs.length) {
+        vscode.window.showInformationMessage('没有需要清理的题目文件夹。');
+        return;
       }
-      const ids = Array.from(displayToPid.keys()).sort((a, b) => b.length - a.length);
-      const dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory());
-      const targets: string[] = [];
-      for (const d of dirs) {
-        const name = d.name;
-        let id: string | undefined;
-        if (displayToPid.has(name)) id = name;
-        else {
-          for (const k of ids) {
-            if (name.startsWith(k + ' ')) { id = k; break; }
+      let cancelled = false;
+      const targets = await vscode.window.withProgress<string[]>(
+        { location: vscode.ProgressLocation.Notification, title: '清理已通过代码', cancellable: true },
+        async (progress, token) => {
+          token.onCancellationRequested(() => { cancelled = true; });
+          progress.report({ message: `扫描 ${dirs.length} 个本地题目文件夹…` });
+          const names = dirs.map((d) => d.name);
+          const displayToPid = await this.lookupProblemIds(names, token, progress);
+          if (token.isCancellationRequested) return [];
+          const matched: Array<{ name: string; pid: number }> = [];
+          for (const d of dirs) {
+            const pid = this.matchDisplayId(displayToPid, d.name);
+            if (pid !== undefined) matched.push({ name: d.name, pid });
           }
-        }
-        if (id && acSet.has(Number(displayToPid.get(id)))) targets.push(path.join(root, name));
+          if (!matched.length) return [];
+          const pids = Array.from(new Set(matched.map((m) => m.pid).filter((n) => Number.isFinite(n) && n > 0)));
+          const acSet = new Set<number>();
+          const chunks: number[][] = [];
+          for (let i = 0; i < pids.length; i += 300) chunks.push(pids.slice(i, i + 300));
+          let cursor = 0;
+          progress.report({ message: `检查 ${pids.length} 道题目的通过状态…` });
+          const worker = async () => {
+            while (true) {
+              if (token.isCancellationRequested) return;
+              const index = cursor++;
+              if (index >= chunks.length) return;
+              const st = await this.auth.api.getUserProblemStatus(chunks[index]);
+              for (const k of Object.keys(st || {})) {
+                const v: any = (st as any)[k];
+                const s = v && typeof v === 'object' ? v.status : v;
+                if (Number(s) === 0) acSet.add(Number(k));
+              }
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, () => worker()));
+          if (token.isCancellationRequested) return [];
+          return matched.filter((m) => acSet.has(m.pid)).map((m) => path.join(root, m.name));
+        },
+      );
+      if (cancelled) {
+        vscode.window.showInformationMessage('已取消清理。');
+        return;
       }
       if (!targets.length) {
         // Still prune any empty folders.
@@ -512,9 +524,11 @@ export class NuaaOjService implements ProblemPanelHost {
       );
       if (pick !== '清理') return;
       let files = 0;
-      for (const dir of targets) {
-        files += this.countFilesRec(dir);
-        try { await fs.promises.rm(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      for (let i = 0; i < targets.length; i += 8) {
+        const part = targets.slice(i, i + 8);
+        const counts = await Promise.all(part.map((dir) => this.countFilesRec(dir)));
+        files += counts.reduce((a, b) => a + b, 0);
+        await Promise.all(part.map((dir) => fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined)));
       }
       const removedEmpty = await this.removeEmptyDirs(root);
       this.onDataChanged();
@@ -524,13 +538,72 @@ export class NuaaOjService implements ProblemPanelHost {
     }
   }
 
-  private countFilesRec(dir: string): number {
+  private problemIdCache = new Map<string, number>();
+  private problemIdCacheAt = 0;
+
+  private matchDisplayId(map: Map<string, number>, name: string): number | undefined {
+    const exact = map.get(name);
+    if (exact !== undefined) return exact;
+    let bestId = '';
+    let bestPid: number | undefined;
+    for (const [id, pid] of map) {
+      if (id.length > bestId.length && name.startsWith(id + ' ')) {
+        bestId = id;
+        bestPid = pid;
+      }
+    }
+    return bestPid;
+  }
+
+  /** Resolve the problem ids that actually have local folders, instead of loading every problem. */
+  private async lookupProblemIds(
+    names: string[],
+    token?: vscode.CancellationToken,
+    progress?: vscode.Progress<{ message?: string; increment?: number }>,
+  ): Promise<Map<string, number>> {
+    const map = new Map(this.problemIdCache);
+    const missing = () => names.some((n) => this.matchDisplayId(map, n) === undefined);
+    if (map.size && Date.now() - this.problemIdCacheAt < 30 * 60_000 && !missing()) return map;
+    const addRecords = (records: any[]) => {
+      for (const p of records || []) {
+        const id = String(p.problemId ?? '');
+        const pid = Number(p.pid);
+        if (id && Number.isFinite(pid) && pid > 0) map.set(id, pid);
+      }
+    };
+    const first = await this.auth.api.getProblemList({ currentPage: 1, limit: 500 });
+    addRecords(first.records || []);
+    const pages = Math.min(Number(first.pages) || 1, 50);
+    if (missing() && pages > 1) {
+      const queue: number[] = [];
+      for (let p = 2; p <= pages; p++) queue.push(p);
+      let cursor = 0;
+      const worker = async () => {
+        while (true) {
+          if (token?.isCancellationRequested) return;
+          const index = cursor++;
+          if (index >= queue.length) return;
+          const page = queue[index];
+          progress?.report({ message: `读取题目列表 ${page}/${pages}` });
+          const res = await this.auth.api.getProblemList({ currentPage: page, limit: 500 });
+          addRecords(res.records || []);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
+    }
+    this.problemIdCache = map;
+    this.problemIdCacheAt = Date.now();
+    return map;
+  }
+
+  private async countFilesRec(dir: string): Promise<number> {
     let n = 0;
     try {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (e.isDirectory()) n += this.countFilesRec(path.join(dir, e.name));
-        else n++;
-      }
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      const counts = await Promise.all(
+        entries.map((e) => (e.isDirectory() ? this.countFilesRec(path.join(dir, e.name)) : Promise.resolve(1))),
+      );
+      for (const c of counts) n += c;
     } catch { /* ignore */ }
     return n;
   }

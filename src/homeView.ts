@@ -300,6 +300,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         language: r.language,
         submitTime: r.submit_time || r.completed_at,
         username: r.username,
+        uid: r.uid,
       }));
       const total = res.total || 0;
       const pages = (res as any).pages || Math.max(1, Math.ceil(total / size));
@@ -332,6 +333,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         return {
           submitId: r.submitId,
           username: r.username,
+          uid: r.uid,
           displayPid: r.displayPid ?? r.pid,
           title: r.title,
           statusShort: st.short,
@@ -943,7 +945,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    const tb=document.createElement('tbody');
    items.forEach(function(r){ const tr=document.createElement('tr');
      tr.appendChild(el('td','','#'+r.submitId));
-     tr.appendChild(el('td','',r.username||''));
+     const tdu=el('td'); if(r.uid && r.username){ const ua=el('a','runid',r.username); ua.href='#'; ua.title='打开个人主页'; ua.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUser', uid:r.uid, username:r.username}); }); tdu.appendChild(ua); } else tdu.textContent=r.username||''; tr.appendChild(tdu);
      const tdp=el('td'); const pl=el('a','plink',(r.displayPid||'')+' '+(r.title||'')); pl.href='#'; pl.title='打开题目'; pl.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openProblem', value:r.displayPid}); }); tdp.appendChild(pl); tr.appendChild(tdp);
      const tds=el('td'); const pill=el('span','pill',r.statusLabel||('状态'+r.status)); pill.style.background=stColor(r.status); tds.appendChild(pill); tr.appendChild(tds);
      tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
@@ -994,7 +996,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    items.forEach(function(r){
      const tr=document.createElement('tr');
      const td0=el('td'); const a=el('a','runid','#'+r.submitId); a.href='#'; a.title='在 VS Code 中查看提交详情'; a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openSubmission', submitId:r.submitId}); }); td0.appendChild(a); tr.appendChild(td0);
-     tr.appendChild(el('td','',r.username||''));
+     const tdu=el('td'); if(r.uid && r.username){ const ua=el('a','runid',r.username); ua.href='#'; ua.title='打开个人主页'; ua.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openUser', uid:r.uid, username:r.username}); }); tdu.appendChild(ua); } else tdu.textContent=r.username||''; tr.appendChild(tdu);
      const tdp=el('td'); const pl=el('a','plink',(r.displayPid||'')+' '+(r.title||'')); pl.href='#'; pl.title='打开题目'; pl.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openProblem', value:r.displayPid}); }); tdp.appendChild(pl); tr.appendChild(tdp);
      const tdst=el('td'); const pill=el('span','pill',r.statusShort); pill.style.background=r.statusColor; tdst.appendChild(pill); tdst.appendChild(document.createTextNode(' '+r.statusName)); tr.appendChild(tdst);
      tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
