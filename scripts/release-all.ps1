@@ -248,13 +248,14 @@ try {
     $giteeUrl = "https://oauth2:$GiteeToken@gitee.com/$GiteeRepo.git"
 
     # Gitee mirror does not sync tags automatically; push the tag explicitly.
-    & git push "+refs/tags/$Version:refs/tags/$Version" $giteeUrl 2>&1 |
+    # NOTE: git wants the remote URL BEFORE the refspec.
+    & git push $giteeUrl "+refs/tags/$Version:refs/tags/$Version" 2>&1 |
       ForEach-Object { Write-Host ($_ -replace [regex]::Escape($GiteeToken), "***") }
-    if ($LASTEXITCODE -ne 0) { Write-Warn2 "Gitee tag push failed" }
+    if ($LASTEXITCODE -ne 0) { Add-Failure "Gitee tag push failed; release tag may be missing" }
 
     if ($SyncGiteeBranch) {
       # This is faster and more deterministic than waiting for the web mirror.
-      & git push "HEAD:refs/heads/main" $giteeUrl 2>&1 |
+      & git push $giteeUrl "HEAD:refs/heads/main" 2>&1 |
         ForEach-Object { Write-Host ($_ -replace [regex]::Escape($GiteeToken), "***") }
       if ($LASTEXITCODE -eq 0) {
         Write-Ok "Gitee main synced"
