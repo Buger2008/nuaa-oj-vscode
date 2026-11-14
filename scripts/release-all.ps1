@@ -191,7 +191,7 @@ try {
     Write-Ok "GitHub main = $sha"
 
     # Tag is cheap; force update it too.
-    & git push origin "+refs/tags/$Version:refs/tags/$Version" 2>&1 | ForEach-Object { Write-Host $_ }
+    & git push origin "+refs/tags/${Version}:refs/tags/${Version}" 2>&1 | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) { Write-Warn2 "GitHub tag push failed (release may still auto-create it)" }
 
     $ghView = & gh release view $Version -R $GitHubRepo --json tagName,assets 2>$null
@@ -249,7 +249,7 @@ try {
 
     # Gitee mirror does not sync tags automatically; push the tag explicitly.
     # NOTE: git wants the remote URL BEFORE the refspec.
-    & git push $giteeUrl "+refs/tags/$Version:refs/tags/$Version" 2>&1 |
+    & git push $giteeUrl "+refs/tags/${Version}:refs/tags/${Version}" 2>&1 |
       ForEach-Object { Write-Host ($_ -replace [regex]::Escape($GiteeToken), "***") }
     if ($LASTEXITCODE -ne 0) { Add-Failure "Gitee tag push failed; release tag may be missing" }
 
