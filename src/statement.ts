@@ -22,6 +22,8 @@ export interface InitialState {
   canSubmit?: boolean;
   /** If set, shows a warning that this language is forbidden for the problem. */
   forbiddenLanguage?: string;
+  /** True when the current user has already solved (AC) this problem. */
+  accepted?: boolean;
 }
 
 export function renderProblemHtml(
@@ -136,6 +138,7 @@ export function renderProblemHtml(
          border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); vertical-align: middle; }
   select.lang:disabled { opacity: .8; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+ .accepted { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; padding: 10px 14px; border-radius: 8px; background: rgba(103,194,58,.14); border: 1px solid #67c23a; color: #4e9a2f; font-weight: 600; font-size: 13.5px; }
   button { font-family: inherit; font-size: 13px; border: 1px solid var(--vscode-button-border, transparent);
            background: var(--vscode-button-background); color: var(--vscode-button-foreground);
            padding: 6px 14px; border-radius: 4px; cursor: pointer; }
@@ -192,6 +195,7 @@ export function renderProblemHtml(
   </div>
   <div class="meta">${tags}</div>
 </header>
+${init.accepted ? '<div class="accepted">✅ 你已经通过该问题</div>' : ''}
 
 <div class="toolbar">
   <button id="btn-test">▶ 用样例测试</button>

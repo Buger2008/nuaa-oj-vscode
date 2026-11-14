@@ -851,6 +851,17 @@ export class NuaaOjService implements ProblemPanelHost {
     const defaultLang = vscode.workspace.getConfiguration('nuaaOj').get<string>('defaultLanguage', 'C');
     const effective = (fileUri ? submissionLanguage(ctx, fileUri.fsPath) : undefined) || pickLanguage(ctx, fileLang, defaultLang);
     const user = this.auth.currentUser;
+    let accepted = false;
+    if (user && ctx.pid) {
+      try {
+        const st = await this.auth.api.getUserProblemStatus([ctx.pid]);
+        const v: any = (st as any)[String(ctx.pid)] ?? (st as any)[ctx.pid];
+        const s = v && typeof v === 'object' ? v.status : v;
+        accepted = Number(s) === 0;
+      } catch {
+        /* ignore */
+      }
+    }
     return {
       language: effective || '(未确定)',
       fileName: fileName || '(未创建)',
@@ -859,6 +870,7 @@ export class NuaaOjService implements ProblemPanelHost {
       baseUrl: this.base(),
       languageLocked: isLanguageLocked(ctx),
       allowedLanguages: ctx.allowedLanguages,
+      accepted,
     };
   }
 
@@ -1238,7 +1250,8 @@ export class NuaaOjService implements ProblemPanelHost {
     this.onDataChanged();
     // The OJ status tables can lag a moment behind the judge result; refresh again shortly
     // so AC flags in the sidebar update without the user re-clicking the tab.
-    setTimeout(() => this.onDataChanged(), 2500);
+    void ProblemPanel.refreshAllOpen();
+    setTimeout(() => { this.onDataChanged(); void ProblemPanel.refreshAllOpen(); }, 2500);
     // For Accepted submissions the OJ returns a placeholder errorMessage ("does not support viewing");
     // don't show that as "评测信息".
     const errorMessage = meta.short === 'AC' ? undefined : last.errorMessage || undefined;

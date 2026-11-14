@@ -189,7 +189,7 @@ export class UserHomePanel {
      if(!d.items.length){ html+='<p class="muted">暂无提交</p>'; }
      else{
        html+='<table><thead><tr><th>RUNID</th><th>题目</th><th>状态</th><th>时间</th><th>内存</th><th>语言</th><th>提交时间</th></tr></thead><tbody>';
-       d.items.forEach(function(r){ html+='<tr><td><a class="runid" data-sid="'+r.submitId+'">#'+r.submitId+'</a></td><td>'+esc((r.displayPid||'')+' '+(r.title||''))+'</td><td>'+esc(r.status)+'</td><td>'+esc(r.time)+' ms</td><td>'+esc(r.memory)+' KB</td><td>'+esc(r.language||'')+'</td><td>'+esc(r.submitTime? new Date(r.submitTime).toLocaleString():'')+'</td></tr>'; });
+       d.items.forEach(function(r){ html+='<tr><td><a class="runid" data-sid="'+r.submitId+'">#'+r.submitId+'</a></td><td><a class="plink" data-pid="'+esc(r.displayPid)+'">'+esc((r.displayPid||'')+' '+(r.title||''))+'</a></td><td>'+esc(r.status)+'</td><td>'+esc(r.time)+' ms</td><td>'+esc(r.memory)+' KB</td><td>'+esc(r.language||'')+'</td><td>'+esc(r.submitTime? new Date(r.submitTime).toLocaleString():'')+'</td></tr>'; });
        html+='</tbody></table>';
        html+='<div class="pager"><button id="prev" '+(d.page<=1?'disabled':'')+'>‹ 上一页</button><span class="muted">第 '+d.page+' / '+d.pages+' 页 · 共 '+d.total+' 条</span><button id="next" '+(d.page>=d.pages?'disabled':'')+'>下一页 ›</button></div>';
      }

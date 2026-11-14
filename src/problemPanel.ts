@@ -96,6 +96,12 @@ export class ProblemPanel {
     return p;
   }
 
+  static async refreshAllOpen(): Promise<void> {
+    for (const p of ProblemPanel.current.values()) {
+      try { await p.render(); } catch { /* ignore */ }
+    }
+  }
+
   async render(): Promise<void> {
     if (this.disposed) return;
     try {

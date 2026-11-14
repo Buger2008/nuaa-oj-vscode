@@ -610,6 +610,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  th{font-weight:600;}
  tr:hover{background:rgba(127,127,127,.12);}
  a.runid{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:underline;}
+ a.plink{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none;} a.plink:hover{text-decoration:underline;}
  .pill{display:inline-block;color:#fff;border-radius:8px;padding:0 6px;font-size:10.5px;font-weight:700;}
  .pager{display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:center;margin:10px 0 4px;}
  .pg{font-family:inherit;font-size:12px;min-width:26px;padding:2px 6px;border-radius:4px;border:1px solid var(--vscode-panel-border);background:transparent;color:var(--vscode-foreground);cursor:pointer;}
@@ -943,7 +944,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    items.forEach(function(r){ const tr=document.createElement('tr');
      tr.appendChild(el('td','','#'+r.submitId));
      tr.appendChild(el('td','',r.username||''));
-     tr.appendChild(el('td','',(r.displayPid||'')+' '+(r.title||'')));
+     const tdp=el('td'); const pl=el('a','plink',(r.displayPid||'')+' '+(r.title||'')); pl.href='#'; pl.title='打开题目'; pl.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openProblem', value:r.displayPid}); }); tdp.appendChild(pl); tr.appendChild(tdp);
      const tds=el('td'); const pill=el('span','pill',r.statusLabel||('状态'+r.status)); pill.style.background=stColor(r.status); tds.appendChild(pill); tr.appendChild(tds);
      tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
      tr.appendChild(el('td','',(r.memory==null?'-':r.memory)+' KB'));
@@ -994,7 +995,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
      const tr=document.createElement('tr');
      const td0=el('td'); const a=el('a','runid','#'+r.submitId); a.href='#'; a.title='在 VS Code 中查看提交详情'; a.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openSubmission', submitId:r.submitId}); }); td0.appendChild(a); tr.appendChild(td0);
      tr.appendChild(el('td','',r.username||''));
-     tr.appendChild(el('td','',(r.displayPid||'')+' '+(r.title||'')));
+     const tdp=el('td'); const pl=el('a','plink',(r.displayPid||'')+' '+(r.title||'')); pl.href='#'; pl.title='打开题目'; pl.addEventListener('click',function(e){ e.preventDefault(); vscode.postMessage({type:'openProblem', value:r.displayPid}); }); tdp.appendChild(pl); tr.appendChild(tdp);
      const tdst=el('td'); const pill=el('span','pill',r.statusShort); pill.style.background=r.statusColor; tdst.appendChild(pill); tdst.appendChild(document.createTextNode(' '+r.statusName)); tr.appendChild(tdst);
      tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
      tr.appendChild(el('td','',(r.memory==null?'-':r.memory)+' KB'));
