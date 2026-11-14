@@ -343,6 +343,11 @@ export class NuaaOjService implements ProblemPanelHost {
     return this.auth.api.getKnowledgeCapability(u, kpId);
   }
 
+  async weekly(week?: string): Promise<any> {
+    if (!(await this.auth.ensureLoggedIn(false))) throw new OjError('请先登录。');
+    return this.auth.api.getWeeklyAnalysis(week || undefined);
+  }
+
   // ---- Settings: profile / account -----------------------------------------
   private settingsInfo(): any {
     const u: any = this.auth.currentUser;

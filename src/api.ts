@@ -515,6 +515,11 @@ export class OjApi {
   async getKnowledgeCapability(username: string, kpId: string): Promise<any> {
     return this.request(`/recommendation-api/student_profile/${encodeURIComponent(username)}/knowledge/${encodeURIComponent(kpId)}`);
   }
+
+  async getWeeklyAnalysis(week?: string): Promise<any> {
+    const q = week ? `?week=${encodeURIComponent(week)}` : '';
+    return this.request(`/recommendation-api/weekly-analysis/student${q}`);
+  }
   async changePassword(oldPassword: string, newPassword: string): Promise<any> {
     return this.request('/api/change-password', { method: 'POST', body: { oldPassword, newPassword } });
   }

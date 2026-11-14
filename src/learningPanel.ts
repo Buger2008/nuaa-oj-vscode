@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 export interface LearningHost {
   data(): Promise<any>;
+  weekly(week?: string): Promise<any>;
   openAssistantGeneral(): void;
   openProfile(): void;
   openLearningMap(): void;
@@ -38,6 +39,7 @@ export class LearningPanel {
     this.panel.webview.onDidReceiveMessage(async (m) => {
       if (m?.type === 'ready') await this.load();
       else if (m?.type === 'refresh') await this.load();
+      else if (m?.type === 'weekly') await this.loadWeekly(String(m.week || ''));
       else if (m?.type === 'openAssistant') this.host.openAssistantGeneral();
       else if (m?.type === 'openProfile') this.host.openProfile();
       else if (m?.type === 'openMap') this.host.openLearningMap();
@@ -51,8 +53,19 @@ export class LearningPanel {
     try {
       const data = await this.host.data();
       this.post({ type: 'data', data });
+      await this.loadWeekly('');
     } catch (e: any) {
       this.post({ type: 'error', text: e?.message ?? String(e) });
+    }
+  }
+
+  private async loadWeekly(week: string): Promise<void> {
+    this.post({ type: 'weeklyLoading', week });
+    try {
+      const data = await this.host.weekly(week || undefined);
+      this.post({ type: 'weekly', week, data });
+    } catch (e: any) {
+      this.post({ type: 'weeklyError', week, text: e?.message ?? String(e) });
     }
   }
 
@@ -93,6 +106,16 @@ export class LearningPanel {
  .tag{font-size:11px;padding:1px 6px;border-radius:8px;color:#fff;}
  .tag.open{background:#67c23a;} .tag.lock{background:#909399;}
  .notice{padding:6px 10px;border-radius:6px;background:rgba(127,127,127,.12);color:var(--vscode-descriptionForeground);margin-top:10px;}
+ .weekly{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:12px 14px;margin:4px 0 12px;}
+ .weekly .whead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+ .weekly .whead h3{font-size:14px;margin:0;}
+ .weekly select{font-family:inherit;font-size:12px;padding:3px 6px;border-radius:4px;background:var(--vscode-dropdown-background);color:var(--vscode-dropdown-foreground);border:1px solid var(--vscode-dropdown-border);}
+ .weekly .dates{font-size:12px;color:var(--vscode-descriptionForeground);margin:2px 0 8px;}
+ .weekly ol{margin:6px 0 4px;padding-left:22px;}
+ .weekly ol li{margin:5px 0;line-height:1.55;}
+ .weekly .coverage{font-size:12px;color:#e6a23c;margin-top:8px;}
+ .weekly .note{font-size:12px;color:var(--vscode-descriptionForeground);margin-top:6px;}
+ .weekly .wstatus{font-size:12.5px;color:var(--vscode-descriptionForeground);margin:4px 0;}
 </style></head><body>
 <h1>学径</h1>
 <div class="muted" id="sub">加载中…</div>
@@ -123,6 +146,7 @@ export class LearningPanel {
    h+='<div class="card"><div class="n">'+esc(rec)+' <small>道</small></div><div class="l">推荐题目</div><div class="s">按薄弱点生成</div></div>';
    h+='<div class="card"><div class="n">'+esc(weak)+' <small>项</small></div><div class="l">薄弱知识点</div><div class="s">建议优先攻克</div></div>';
    h+='</div>';
+   h+='<h2>本周学习建议</h2><div id="weekly" class="weekly"><p class="muted">加载中…</p></div>';
    h+='<h2>功能</h2><div class="menu">';
    h+='<div class="mrow" data-act="map"><span class="mi">🗺</span><span class="mt">学习地图</span><span class="ms">知识点掌握与解锁情况</span><span class="mc">›</span></div>';
    h+='<div class="mrow" data-act="rec"><span class="mi">⭐</span><span class="mt">推荐学习资源</span><span class="ms">暂未开发</span><span class="mc">›</span></div>';
@@ -139,8 +163,34 @@ export class LearningPanel {
      });
    });
  }
+ function weeklyStatus(a){
+   if(!a) return '正在读取建议';
+   if(a.status==='disabled') return '周度建议尚未启用';
+   if(a.status==='pending') return '本期建议生成中，请稍后查看';
+   if(a.status==='failed') return '生成失败，等待管理员处理';
+   var map={no_submissions:'本期无符合分析范围的提交',unavailable:'本期有提交，但必要材料不可用，无法分析',archived_before_run:'本期处理开始前班级已归档，不生成教学建议',insufficient:'证据有限，仅展示有依据的建议',no_reliable_issue:'根据本周可分析的提交，暂未发现明确问题，继续保持练习。'};
+   return map[a.reason]||'';
+ }
+ function renderWeekly(week,data,error){
+   var el=document.getElementById('weekly'); if(!el) return;
+   if(error){ el.innerHTML='<p class="muted">加载失败：'+esc(error)+'</p>'; return; }
+   var value=data||{}, a=value.advice, weeks=value.weeks||[];
+   var h='<div class="whead"><h3>'+(week?'历史学习建议':'本周学习建议')+'</h3><select id="wk"><option value="">本期（上一完整周）</option>';
+   weeks.forEach(function(w){ h+='<option value="'+esc(w)+'"'+(w===week?' selected':'')+'>'+esc(w)+'</option>'; });
+   h+='</select></div>';
+   if(a){ h+='<div class="dates">分析依据：'+esc(a.week)+' 00:00 至 '+esc(a.end)+' 00:00 前（北京时间）</div>'; }
+   var st=weeklyStatus(a); if(st) h+='<div class="wstatus">'+esc(st)+'</div>';
+   if(a&&Array.isArray(a.items)&&a.items.length){ h+='<ol>'; a.items.forEach(function(x){ h+='<li>'+esc(x)+'</li>'; }); h+='</ol>'; }
+   if(a&&Number(a.skipped_count)>0){ h+='<div class="coverage">覆盖不完整：有 '+esc(a.skipped_count)+' 道题的部分或全部分析遗漏。</div>'; }
+   if(a&&a.compressed){ h+='<div class="note">本期建议依据逐份压缩后的分析生成。</div>'; }
+   el.innerHTML=h;
+   var sel=document.getElementById('wk'); if(sel){ sel.addEventListener('change',function(){ vscode.postMessage({type:'weekly', week:sel.value}); }); }
+ }
  window.addEventListener('message',function(e){ const m=e.data;
    if(m.type==='data'){ render(m.data); }
+   else if(m.type==='weekly'){ renderWeekly(m.week||'',m.data,''); }
+   else if(m.type==='weeklyLoading'){ const w=document.getElementById('weekly'); if(w){ w.innerHTML='<p class="muted">加载中…</p>'; } }
+   else if(m.type==='weeklyError'){ renderWeekly(m.week||'',null,m.text); }
    else if(m.type==='loading'){ root.innerHTML='<p class="muted">加载中…</p>'; }
    else if(m.type==='error'){ root.innerHTML='<p class="muted">加载失败：'+esc(m.text)+'</p>'; }
  });
