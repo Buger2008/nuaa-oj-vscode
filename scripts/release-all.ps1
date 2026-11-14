@@ -1,7 +1,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-  One-click build + GitHub / Gitee / GitCode release for nuaa-oj-vscode.
+  One-click build + GitHub / Gitee release for nuaa-oj-vscode.
 
 .DESCRIPTION
   - Reads the version from package.json unless -Version is supplied.
@@ -10,23 +10,21 @@
   - Creates/updates the GitHub release and uploads the VSIX.
   - Pushes the tag/branch to Gitee, creates/updates the Gitee release and uploads
     the VSIX through Gitee's attach_files API.
-  - Creates/updates the GitCode release and uploads the VSIX if the GitCode
-    mirror has already synced. GitCode image repositories cannot accept a git
-    push, so if the mirror is behind the script prints the web sync URL and
-    asks you to re-run after clicking Sync.
+  - GitCode is intentionally not released: its mirror only syncs periodically
+    and its image repository cannot accept git pushes. Only GitHub and Gitee
+    releases are published by this script.
 
 .EXAMPLE
   pwsh -File .\scripts\release-all.ps1 -Notes "修复若干问题"
 
 .EXAMPLE
-  pwsh -File .\scripts\release-all.ps1 -SkipBuild -SkipGitHub -SkipGitee `
-    -Version 1.10.22 -Notes "只补 GitCode release"
+  pwsh -File .\scripts\release-all.ps1 -SkipBuild -SkipGitHub `
+    -Version 1.10.22 -Notes "只补 Gitee release"
 
 .NOTES
   Required once:
     gh auth login
     gitee auth login            # PAT, projects permission
-    gitcode auth login --web
   Gitee token is read from -GiteeToken, $env:GITEE_TOKEN, or `gitee auth token`.
 #>
 [CmdletBinding()]
@@ -36,16 +34,12 @@ param(
   [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
   [string]$GitHubRepo = "Buger2008/nuaa-oj-vscode",
   [string]$GiteeRepo = "buger2008/nuaa-oj-vscode",
-  [string]$GitCodeRepo = "buger2008/nuaa-oj-vscode",
   [string]$GiteeToken,
-  [string]$GitCodeCli = "$env:LOCALAPPDATA\gitcode-cli\bin\gitcode.exe",
   [string]$CommitMessage,
   [bool]$SyncGiteeBranch = $true,
-  [int]$MirrorWaitSeconds = 0,
   [switch]$SkipBuild,
   [switch]$SkipGitHub,
   [switch]$SkipGitee,
-  [switch]$SkipGitCode,
   [switch]$DryRun
 )
 
@@ -137,7 +131,6 @@ try {
   Write-Host "  vsix      : $vsix"
   Write-Host "  GitHub    : $GitHubRepo"
   Write-Host "  Gitee     : $GiteeRepo"
-  Write-Host "  GitCode   : $GitCodeRepo"
 
   if ($DryRun) { Write-Ok "DryRun only"; return }
 
@@ -306,52 +299,6 @@ try {
       } else {
         $uploaded = $attachText | ConvertFrom-Json
         Write-Ok "Gitee asset uploaded (id=$($uploaded.id))"
-      }
-    }
-  }
-
-  if (-not $SkipGitCode) {
-    # ---------------------------------------------------------- GitCode
-    Write-Step "GitCode: mirror check + release + asset"
-    $gc = $GitCodeCli
-    if (-not (Test-Path $gc)) {
-      $cmd = Get-Command gitcode -ErrorAction SilentlyContinue
-      if ($cmd) { $gc = $cmd.Source } else { $gc = $null }
-    }
-    if (-not $gc) {
-      Add-Failure "GitCode CLI not found. Install it or pass -GitCodeCli <path>."
-    } else {
-      $gcHead = Get-RemoteHead "https://gitcode.com/$GitCodeRepo.git"
-      if ($gcHead -ne $sha) {
-        if ($MirrorWaitSeconds -gt 0) {
-          Write-Warn2 "GitCode mirror is at $gcHead, waiting up to $MirrorWaitSeconds sec for $sha ..."
-          $deadline = (Get-Date).AddSeconds($MirrorWaitSeconds)
-          while ((Get-Date) -lt $deadline -and $gcHead -ne $sha) {
-            Start-Sleep -Seconds 20
-            $gcHead = Get-RemoteHead "https://gitcode.com/$GitCodeRepo.git"
-            Write-Host "    GitCode HEAD: $gcHead" -ForegroundColor DarkGray
-          }
-        }
-      }
-
-      if ($gcHead -ne $sha) {
-        Add-Failure "GitCode mirror is not synced (HEAD=$gcHead, expected=$sha). Open https://gitcode.com/$GitCodeRepo and click Sync, then rerun: pwsh -File .\scripts\release-all.ps1 -Version $Version -SkipBuild -SkipGitHub -SkipGitee"
-      } else {
-        Write-Ok "GitCode main = $sha"
-        $gcView = & $gc release view $Version -R $GitCodeRepo --json 2>$null
-        if ($LASTEXITCODE -ne 0 -or -not $gcView) {
-          Invoke-Native $gc @("release", "create", $Version, "-R", $GitCodeRepo, "--title", $Version, "--notes", $Notes, "--target", $sha, "--no-interactive")
-          Write-Ok "GitCode release created"
-        } else {
-          Write-Ok "GitCode release exists"
-        }
-        Invoke-Native $gc @("release", "upload", $Version, $vsix, "-R", $GitCodeRepo, "--no-interactive") -IgnoreExitCode
-        $gcCheck = & $gc release view $Version -R $GitCodeRepo --json 2>$null
-        if ($LASTEXITCODE -eq 0 -and $gcCheck) {
-          Write-Ok "GitCode release/assets refreshed"
-        } else {
-          Add-Failure "GitCode release verification failed"
-        }
       }
     }
   }
