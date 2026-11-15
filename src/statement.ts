@@ -171,7 +171,7 @@ export function renderProblemHtml(
          font-size: 12.5px; padding: 8px 10px; border-radius: 5px; background: var(--vscode-input-background);
          color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
   code { background: var(--vscode-textCodeBlock-background, rgba(127,127,127,.15)); padding: 1px 5px; border-radius: 3px; }
-  #results { margin-top: 26px; }
+  #results { margin-top: 26px; scroll-margin-top: 84px; }
   .pill { display: inline-block; padding: 1px 9px; border-radius: 10px; font-weight: 700; font-size: 12px; color: #fff; }
   .case { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
   .case-head { display: flex; gap: 10px; align-items: center; }
@@ -195,7 +195,7 @@ export function renderProblemHtml(
   </div>
   <div class="meta">${tags}</div>
 </header>
-${init.accepted ? '<div class="accepted">✅ 你已经通过该问题</div>' : ''}
+<div class="accepted" id="acceptedBanner" style="display:${init.accepted ? 'flex' : 'none'}">✅ 你已经通过该问题</div>
 
 <div class="toolbar">
   <button id="btn-test">▶ 用样例测试</button>
@@ -239,6 +239,11 @@ ${bodyHtml}
       case 'status': showStatus(msg.text); break;
       case 'testResult': renderTest(msg.result); break;
       case 'submitResult': renderSubmit(msg.result); break;
+      case 'accepted': {
+        const banner = $('acceptedBanner');
+        if (banner) banner.style.display = 'flex';
+        break;
+      }
       case 'error': showError(msg.text); break;
       case 'meta': break;
       case 'languageChanged':
@@ -273,19 +278,37 @@ ${bodyHtml}
   function pre(s) { return '<pre class="io">' + escapeHtml(s || '') + '</pre>'; }
   function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
+  function scrollToResults() {
+    const el = $('results');
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const header = document.querySelector('header');
+      const offset = (header ? header.getBoundingClientRect().height : 0) + 16;
+      const top = el.getBoundingClientRect().top;
+      // The statement is long; bring the freshly updated result into view so a
+      // successful submission never looks like "nothing happened".
+      if (top < offset || top > window.innerHeight - 80) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+  function setResults(html) {
+    $('results').innerHTML = html;
+    scrollToResults();
+  }
   function showStatus(text) {
-    $('results').innerHTML = '<div class="progress">' + escapeHtml(text) + '</div>';
+    setResults('<div class="progress">' + escapeHtml(text) + '</div>');
   }
   function showError(text) {
-    $('results').innerHTML = '<div class="summary" style="border-color:#f56c6c"><b>出错：</b> ' + escapeHtml(text) + '</div>';
+    setResults('<div class="summary" style="border-color:#f56c6c"><b>出错：</b> ' + escapeHtml(text) + '</div>');
   }
 
   function renderTest(r) {
     let html = '<h3 style="margin:14px 0 8px">' + (r.cloud ? '云端样例测试' : '本地样例测试') + '</h3>';
-    if (r.skipped) { html += '<div class="summary">' + escapeHtml(r.skipped) + '</div>'; $('results').innerHTML = html; return; }
+    if (r.skipped) { html += '<div class="summary">' + escapeHtml(r.skipped) + '</div>'; setResults(html); return; }
     if (r.compileError) {
       html += '<div class="summary" style="border-color:#e6a23c"><b>编译错误：</b></div>' + pre(r.compileError);
-      $('results').innerHTML = html; return;
+      setResults(html); return;
     }
     const hasOk = r.cases.some((c) => c.status === 'OK');
     const passed = r.cases.filter((c) => c.status === 'AC' || c.status === 'OK').length;
@@ -307,13 +330,13 @@ ${bodyHtml}
       }
       html += '</div>';
     }
-    $('results').innerHTML = html;
+    setResults(html);
   }
 
   function renderSubmit(r) {
     let html = '<h3 style="margin:14px 0 8px">云端评测结果</h3>';
     if (r.phase === 'progress') { showStatus(r.text); return; }
-    if (r.error) { html += '<div class="summary" style="border-color:#f56c6c"><b>提交失败：</b> ' + escapeHtml(r.error) + '</div>'; $('results').innerHTML = html; return; }
+    if (r.error) { html += '<div class="summary" style="border-color:#f56c6c"><b>提交失败：</b> ' + escapeHtml(r.error) + '</div>'; setResults(html); return; }
     const st = r.status || {};
     html += '<div class="summary big"><span class="pill" style="background:' + (st.color||'#9e9e9e') + '">' +
             escapeHtml(st.short || '?') + '</span> ' + escapeHtml(st.name || '') +
@@ -334,7 +357,7 @@ ${bodyHtml}
       }
     }
     html += '<div class="meta" style="margin-top:12px"><a href="' + INIT.baseUrl + '/submission-detail/' + (r.submitId||'') + '">在 OJ 查看提交详情</a></div>';
-    $('results').innerHTML = html;
+    setResults(html);
   }
 
   // Statement sections (Markdown + LaTeX) are rendered by resources/vendor/statement-render.js.

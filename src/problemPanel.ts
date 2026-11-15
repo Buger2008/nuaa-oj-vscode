@@ -161,6 +161,10 @@ export class ProblemPanel {
     this.post({ type: 'testResult', result });
   }
   postSubmitResult(result: any) {
+    if (result?.status?.short === 'AC') {
+      this.overrideInit = { ...this.overrideInit, accepted: true };
+      this.post({ type: 'accepted' });
+    }
     this.post({ type: 'submitResult', result });
   }
 
