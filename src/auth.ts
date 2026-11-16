@@ -36,6 +36,7 @@ export class AuthManager {
       baseUrl: this.currentBaseUrl,
       getToken: () => this.token,
       onUnauthorized: () => this.silentRelogin(),
+      timeoutMs: 10000,
     });
   }
 
@@ -96,7 +97,19 @@ export class AuthManager {
     return user;
   }
 
-  /** Attempt to log in again using saved credentials. Returns the fresh token or undefined. */
+  /** A 401/403/business 400 from the login endpoint means the saved password is no longer valid. */
+  private isAuthFailure(e: any): boolean {
+    if (!(e instanceof OjError)) return false;
+    if (e.httpStatus === 401 || e.httpStatus === 403) return true;
+    if (e.bizStatus === 400 || e.bizStatus === 401 || e.bizStatus === 403) return true;
+    return /用户名|密码|账号|凭证/.test(e.message);
+  }
+
+  /**
+   * Attempt to log in again using saved credentials.
+   * Returns the fresh token, undefined when no credentials exist or the password is invalid.
+   * Network/server/proxy failures are re-thrown so the UI can say "连接失败", not "请登录".
+   */
   async silentRelogin(): Promise<string | undefined> {
     const credRaw = await this.context.secrets.get(CRED_KEY);
     if (!credRaw) return undefined;
@@ -110,8 +123,11 @@ export class AuthManager {
       await this.context.secrets.store(TOKEN_KEY, JSON.stringify({ token, exp: this.exp } satisfies StoredToken));
       await this.context.globalState.update('nuaaOj.user', user);
       return token;
-    } catch {
-      return undefined;
+    } catch (e: any) {
+      if (this.isAuthFailure(e)) return undefined;
+      if (e instanceof OjError && e.isConnection) throw e;
+      // Unknown failures are safer to surface than silently switching to the login form.
+      throw e instanceof OjError ? e : new OjError(String(e?.message ?? e), undefined, undefined, true);
     }
   }
 
@@ -119,7 +135,17 @@ export class AuthManager {
   async ensureLoggedIn(interactive = true): Promise<boolean> {
     this.syncBaseUrl();
     if (await this.hasUsableToken()) return true;
-    const fresh = await this.silentRelogin();
+    let fresh: string | undefined;
+    try {
+      fresh = await this.silentRelogin();
+    } catch (e: any) {
+      const msg = e instanceof OjError ? e.message : String(e?.message ?? e);
+      if (interactive) {
+        vscode.window.showErrorMessage(`连接 NUAA OJ 失败：${msg}`);
+        return false;
+      }
+      throw e;
+    }
     if (fresh) return true;
     if (!interactive) return false;
     return this.promptLogin();

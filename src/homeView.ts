@@ -85,6 +85,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     this.trainingsCache = undefined;
     this.postState();
     this.postTabs();
+    void this.updateHomeworkBadge();
     this.view?.webview.postMessage({ type: 'reload' });
   }
 
@@ -121,6 +122,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'ready':
         this.postState();
         this.postTabs();
+        void this.updateHomeworkBadge();
         break;
       case 'tab':
         await this.sendTab(m.tab, '');
@@ -496,6 +498,89 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Build the raw chapter list used by both the homework tab and its tab badge. */
+  private collectHomeworkChapters(d: any): any[] {
+    const kp = d?.knowledge_problems || {};
+    const prog = d?.student_progress || {};
+    const current = d?.course?.current_topic;
+    const stages: any[] = Array.isArray(d?.stages) ? d.stages : [];
+    const chapters: any[] = [];
+    const seen = new Set<string>();
+    const add = (name: string, label: string, hw: any[], pr: any[]) => {
+      const pp = prog[name] || {};
+      chapters.push({
+        label,
+        current: current === name,
+        pass: Number(pp.homework_pass ?? hw.filter((x: any) => x.ac).length),
+        total: Number(pp.homework_total ?? hw.length),
+        practicePass: Number(pp.exercise_pass ?? pr.filter((x: any) => x.ac).length),
+        practiceTotal: Number(pp.exercise_total ?? pr.length),
+        homework: hw,
+        practice: pr,
+      });
+    };
+    for (const st of stages) {
+      const name = st?.name || st?.id;
+      if (!name || seen.has(name)) continue;
+      const hw = (kp[name]?.homework as any[]) || [];
+      const pr = (kp[name]?.practice as any[]) || [];
+      if (!hw.length && !pr.length) continue;
+      seen.add(name);
+      add(name, st.label || name, hw, pr);
+    }
+    for (const name of Object.keys(kp)) {
+      if (seen.has(name)) continue;
+      const hw = (kp[name]?.homework as any[]) || [];
+      const pr = (kp[name]?.practice as any[]) || [];
+      if (!hw.length && !pr.length) continue;
+      const label = hw[0]?.knowledge_sources?.[0]?.label || pr[0]?.knowledge_sources?.[0]?.label || name;
+      add(name, label, hw, pr);
+    }
+    return chapters;
+  }
+
+  /** red = 有作业未完成；yellow = 作业完成但练习未完成；空 = 全部完成。 */
+  private homeworkBadgeState(chapters: any[]): 'red' | 'yellow' | '' {
+    let homeworkPending = false;
+    let practicePending = false;
+    for (const c of chapters) {
+      const hwTotal = Number(c.total) || 0;
+      const hwPass = Number(c.pass) || 0;
+      const prTotal = Number(c.practiceTotal) || 0;
+      const prPass = Number(c.practicePass) || 0;
+      if (hwTotal > 0 && hwPass < hwTotal) homeworkPending = true;
+      if (prTotal > 0 && prPass < prTotal) practicePending = true;
+    }
+    return homeworkPending ? 'red' : practicePending ? 'yellow' : '';
+  }
+
+  private postHomeworkBadge(state: 'red' | 'yellow' | ''): void {
+    this.view?.webview.postMessage({ type: 'homeworkBadge', state });
+  }
+
+  /** Lightweight badge refresh — one learning-map request, no full problem-list fetch. */
+  private async updateHomeworkBadge(): Promise<void> {
+    if (!this.view) return;
+    try {
+      if (!(await this.auth.ensureLoggedIn(false))) {
+        this.postHomeworkBadge('');
+        return;
+      }
+      const u: any = this.auth.currentUser;
+      const uid = vscode.workspace.getConfiguration('nuaaOj').get<string>('recommendation.userId', '') || u?.username || '';
+      if (!uid) {
+        this.postHomeworkBadge('');
+        return;
+      }
+      const d = await this.auth.api.getLearningMap(uid);
+      this.postHomeworkBadge(this.homeworkBadgeState(this.collectHomeworkChapters(d)));
+    } catch {
+      // A background badge must not replace the visible tab with an error; the active tab
+      // reports connection problems in its own content.
+      this.postHomeworkBadge('');
+    }
+  }
+
   private async getHomework(): Promise<any> {
     if (!(await this.auth.ensureLoggedIn(false))) return { needLogin: true, chapters: [] };
     try {
@@ -503,12 +588,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const uid = vscode.workspace.getConfiguration('nuaaOj').get<string>('recommendation.userId', '') || u?.username || '';
       if (!uid) return { chapters: [] };
       const d = await this.auth.api.getLearningMap(uid);
-      const kp = d?.knowledge_problems || {};
-      const prog = d?.student_progress || {};
-      const current = d?.course?.current_topic;
-      const stages: any[] = Array.isArray(d?.stages) ? d.stages : [];
-      const chapters: any[] = [];
-      const seen = new Set<string>();
+      const chapters = this.collectHomeworkChapters(d);
       // Completion (ac/attempted) comes from the course/homework data itself (learning-map);
       // submission statistics (tooltip) are enriched from the same problem data as 自由练习.
       const allProblems = await this.getProblems('');
@@ -527,34 +607,11 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
           statusColor: p.ac ? '#67c23a' : m && m.attempted ? m.statusColor : '#f56c6c',
         };
       };
-      const add = (name: string, label: string, hw: any[], pr: any[]) => {
-        const pp = prog[name] || {};
-        chapters.push({
-          label,
-          current: current === name,
-          pass: pp.homework_pass ?? hw.filter((x: any) => x.ac).length,
-          total: pp.homework_total ?? hw.length,
-          homework: hw.map(mapProb),
-          practice: pr.map(mapProb),
-        });
-      };
-      for (const st of stages) {
-        const name = st?.name || st?.id;
-        if (!name || seen.has(name)) continue;
-        const hw = (kp[name]?.homework as any[]) || [];
-        const pr = (kp[name]?.practice as any[]) || [];
-        if (!hw.length && !pr.length) continue;
-        seen.add(name);
-        add(name, st.label || name, hw, pr);
+      for (const c of chapters) {
+        c.homework = (c.homework || []).map(mapProb);
+        c.practice = (c.practice || []).map(mapProb);
       }
-      for (const name of Object.keys(kp)) {
-        if (seen.has(name)) continue;
-        const hw = (kp[name]?.homework as any[]) || [];
-        const pr = (kp[name]?.practice as any[]) || [];
-        if (!hw.length && !pr.length) continue;
-        const label = hw[0]?.knowledge_sources?.[0]?.label || pr[0]?.knowledge_sources?.[0]?.label || name;
-        add(name, label, hw, pr);
-      }
+      this.postHomeworkBadge(this.homeworkBadgeState(chapters));
       return { chapters, course: d?.course?.course_name || '' };
     } catch (e: any) {
       return { error: e?.message ?? String(e), chapters: [] };
@@ -572,6 +629,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .tabs{display:flex;flex-wrap:wrap;gap:2px;padding:6px 6px 0;border-bottom:1px solid var(--vscode-panel-border);position:sticky;top:0;background:inherit;z-index:2;}
  .tab{flex:1;min-width:60px;text-align:center;font-family:inherit;font-size:12.5px;padding:7px 4px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--vscode-descriptionForeground);cursor:pointer;}
  .tab.active{color:var(--vscode-foreground);border-bottom-color:var(--vscode-focusBorder);font-weight:600;}
+ .tab.has-dot-red::after,.tab.has-dot-yellow::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:4px;vertical-align:middle;}
+ .tab.has-dot-red::after{background:#f56c6c;} .tab.has-dot-yellow::after{background:#e6a23c;}
  .body{flex:1;overflow:auto;padding:8px 8px 30px;}
  input.search{width:100%;box-sizing:border-box;padding:6px 8px;margin:2px 0 8px;border-radius:4px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));background:var(--vscode-input-background);color:var(--vscode-input-foreground);}
  .item{padding:5px 6px;border-radius:4px;cursor:pointer;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;}
@@ -652,6 +711,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); if(activeTab==='status') statusMode='formal'; setActive(); content.innerHTML='<div class="empty">加载中…</div>'; vscode.postMessage({type:'tab', tab:activeTab}); }));
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
+ function setHomeworkBadge(state){ const b=document.querySelector('.tab[data-tab="homework"]'); if(!b) return; b.classList.toggle('has-dot-red', state==='red'); b.classList.toggle('has-dot-yellow', state==='yellow'); }
  function applyTabs(tabs){ const list=Array.isArray(tabs)&&tabs.length?tabs:['home','problems','trainings','homework','status','rank','my']; const set={}; list.forEach(function(t){set[t]=1;}); document.querySelectorAll('.tab').forEach(function(b){ const t=b.getAttribute('data-tab'); if(t) b.style.display = set[t] ? '' : 'none'; }); if(!set[activeTab]){ activeTab=list[0]; setActive(); vscode.postMessage({type:'tab', tab:activeTab}); } }
 
  function needLogin(){ const d=el('div','loginbox'); const b=el('button','loginbtn','登录 NUAA OJ'); b.addEventListener('click',()=>vscode.postMessage({type:'login'})); d.appendChild(el('div','muted','登录后可浏览题目、作业与提交记录')); d.appendChild(b); content.innerHTML=''; content.appendChild(d); }
@@ -778,7 +838,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(data.course) content.appendChild(el('div','muted','课程：'+data.course));
    (data.chapters||[]).forEach((c)=>{
      const det=el('details'); det.setAttribute('data-chapter', c.label); if(openHomeworkChapters.has(c.label)) det.open=true; det.addEventListener('toggle', function(){ if(det.open) openHomeworkChapters.add(c.label); else openHomeworkChapters.delete(c.label); });
-     const sum=el('summary','folder'); sum.appendChild(el('span',null,c.label+(c.current?'（当前）':''))); sum.appendChild(el('span','badge','作业 '+c.pass+'/'+c.total)); det.appendChild(sum);
+     const sum=el('summary','folder'); sum.appendChild(el('span',null,c.label+(c.current?'（当前）':''))); sum.appendChild(el('span','badge','作业 '+c.pass+'/'+c.total+((Number(c.practiceTotal)||0)>0 ? ' · 练习 '+c.practicePass+'/'+c.practiceTotal : ''))); det.appendChild(sum);
      const box=el('div','children');
      (c.homework||[]).forEach((p)=>box.appendChild(probItem(p,'作业')));
      if((c.practice||[]).length){ box.appendChild(el('div','muted','练习')); (c.practice||[]).forEach((p)=>box.appendChild(probItem(p,'练'))); }
@@ -1024,6 +1084,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  window.addEventListener('message',(e)=>{ const m=e.data;
    if(m.type==='tabs'){ applyTabs(m.tabs); return; }
+    if(m.type==='homeworkBadge'){ setHomeworkBadge(m.state||''); return; }
    if(m.type==='status'){ if(activeTab!=='status' || statusMode!=='formal') return; renderStatus(m.payload, m.filters); return; }
    if(m.type==='selfTests'){ if(activeTab!=='status' || statusMode!=='self') return; renderSelfTests(m.payload, m.filters); return; }
    if(m.type==='rank'){ if(activeTab!=='rank') return; renderRank(m.payload, m.filters); return; }

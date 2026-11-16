@@ -527,7 +527,9 @@ export class HomeworkProvider implements vscode.TreeDataProvider<vscode.TreeItem
       const p = prog[name] || {};
       const total = p.homework_total != null ? p.homework_total : hw.length;
       const pass = p.homework_pass != null ? p.homework_pass : hw.filter((x) => x.ac).length;
-      items.push(this.stageItem(name, label, hw, pr, pass, total, current === name));
+      const practiceTotal = p.exercise_total != null ? p.exercise_total : pr.length;
+      const practicePass = p.exercise_pass != null ? p.exercise_pass : pr.filter((x) => x.ac).length;
+      items.push(this.stageItem(name, label, hw, pr, pass, total, practicePass, practiceTotal, current === name));
     };
     for (const st of stages) {
       const name = st?.name || st?.id;
@@ -557,6 +559,8 @@ export class HomeworkProvider implements vscode.TreeDataProvider<vscode.TreeItem
     pr: any[],
     pass: number,
     total: number,
+    practicePass: number,
+    practiceTotal: number,
     isCurrent: boolean,
   ): vscode.TreeItem {
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
@@ -567,9 +571,9 @@ export class HomeworkProvider implements vscode.TreeDataProvider<vscode.TreeItem
     const parts: string[] = [];
     if (isCurrent) parts.push('当前');
     parts.push(`作业 ${pass}/${total}`);
-    if (pr.length) parts.push(`练习 ${pr.length}`);
+    if (practiceTotal > 0) parts.push(`练习 ${practicePass}/${practiceTotal}`);
     item.description = parts.join(' · ');
-    item.tooltip = `${label}\n作业通过 ${pass}/${total}${pr.length ? ` · 练习 ${pr.length} 题` : ''}`;
+    item.tooltip = `${label}\n作业通过 ${pass}/${total}${practiceTotal > 0 ? ` · 练习通过 ${practicePass}/${practiceTotal}` : ''}`;
     item.contextValue = 'homeworkStage';
     return item;
   }

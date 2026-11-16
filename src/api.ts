@@ -15,9 +15,68 @@ export class OjError extends Error {
     message: string,
     public httpStatus?: number,
     public bizStatus?: number,
+    /** True when the failure is caused by the network/server/proxy, not by the account. */
+    public isConnection = false,
   ) {
     super(message);
     this.name = 'OjError';
+  }
+}
+
+const DEFAULT_TIMEOUT_MS = 10000;
+
+function causeChain(e: any): any[] {
+  const list: any[] = [];
+  let cur = e;
+  for (let i = 0; cur && i < 5; i++) {
+    list.push(cur);
+    cur = cur.cause;
+  }
+  return list;
+}
+
+function errorCode(e: any): string {
+  for (const item of causeChain(e)) {
+    const code = item?.code || item?.errno;
+    if (code) return String(code);
+  }
+  return '';
+}
+
+function connectionMessage(e: any, baseUrl: string, timeoutMs: number): string {
+  if (e?.name === 'AbortError' || errorCode(e) === 'ABORT_ERR') {
+    return `连接失败：连接服务器超时（${Math.round(timeoutMs / 1000)} 秒）：${baseUrl}`;
+  }
+  const code = errorCode(e).toUpperCase();
+  const raw = causeChain(e)
+    .map((x) => String(x?.message || ''))
+    .filter(Boolean)
+    .join(' | ');
+  let reason = '';
+  if (/proxy|tunnel/i.test(raw)) reason = '代理连接失败（代理返回异常）';
+  else if (/bad port|invalid port/i.test(raw)) reason = '服务器地址或端口无效';
+  else if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') reason = '域名解析失败（DNS 错误）';
+  else if (code === 'ECONNREFUSED') reason = '服务器拒绝连接';
+  else if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') reason = '连接超时';
+  else if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET') reason = '连接被重置';
+  else if (code === 'EHOSTUNREACH' || code === 'ENETUNREACH') reason = '网络不可达';
+  else if (code === 'EPROTO' || code === 'ERR_SSL_WRONG_VERSION_NUMBER') reason = 'TLS 连接失败';
+  else if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(code + raw)) reason = 'HTTPS 证书校验失败';
+  else reason = raw || '网络错误';
+  return `连接失败：无法访问 ${baseUrl}（${reason}）。请检查网络、代理或服务器状态`;
+}
+
+function connectionError(e: any, baseUrl: string, timeoutMs: number): OjError {
+  return new OjError(connectionMessage(e, baseUrl, timeoutMs), undefined, undefined, true);
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -51,7 +110,7 @@ export class OjApi {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
     this.getToken = opts.getToken;
     this.onUnauthorized = opts.onUnauthorized;
-    this.timeoutMs = opts.timeoutMs ?? 30000;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   setBaseUrl(baseUrl: string) {
@@ -78,24 +137,21 @@ export class OjApi {
     const { method = 'GET', query, body, auth = true } = opts;
     const url = this.buildUrl(path, query);
     const doFetch = async (token?: string): Promise<Response> => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.timeoutMs);
       const headers: Record<string, string> = {
         'Url-Type': 'general',
         Accept: 'application/json, text/plain, */*',
       };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (auth && token) headers['Authorization'] = token;
-      try {
-        return await fetch(url, {
+      return fetchWithTimeout(
+        url,
+        {
           method,
           headers,
           body: body !== undefined ? JSON.stringify(body) : undefined,
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+        },
+        opts.timeoutMs ?? this.timeoutMs,
+      );
     };
 
     let token: string | undefined;
@@ -113,10 +169,8 @@ export class OjApi {
         }
       }
     } catch (e: any) {
-      if (e && e.name === 'AbortError') {
-        throw new OjError('请求超时，请检查网络或稍后重试。');
-      }
-      throw new OjError(`网络请求失败：${e?.message ?? e}`);
+      if (e instanceof OjError) throw e;
+      throw connectionError(e, this.baseUrl, opts.timeoutMs ?? this.timeoutMs);
     }
 
     const text = await res.text();
@@ -125,18 +179,18 @@ export class OjApi {
       json = text ? JSON.parse(text) : {};
     } catch {
       if (!res.ok) {
-        throw new OjError(`服务器返回非 JSON 响应（HTTP ${res.status}）。`, res.status);
+        throw new OjError(`服务器返回异常响应（HTTP ${res.status}）。`, res.status, undefined, res.status >= 500);
       }
       // Some endpoints may return plain text; return as-is when allowed.
       return text as unknown as T;
     }
 
     if (!res.ok) {
-      const msg = json?.msg || json?.message || `HTTP ${res.status}`;
-      throw new OjError(msg, res.status, json?.status);
+      const msg = json?.msg || json?.message || `服务器异常（HTTP ${res.status}）`;
+      throw new OjError(msg, res.status, json?.status, res.status >= 500);
     }
     if (json && typeof json.status === 'number' && json.status !== 200) {
-      throw new OjError(json.msg || `业务错误（status=${json.status}）`, res.status, json.status);
+      throw new OjError(json.msg || `业务错误（status=${json.status}）`, res.status, json.status, json.status >= 500);
     }
     return (json?.data ?? json) as T;
   }
@@ -146,13 +200,17 @@ export class OjApi {
     const url = this.buildUrl('/api/login');
     let res: Response;
     try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Url-Type': 'general', Accept: 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
+      res = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Url-Type': 'general', Accept: 'application/json' },
+          body: JSON.stringify({ username, password }),
+        },
+        this.timeoutMs,
+      );
     } catch (e: any) {
-      throw new OjError(`无法连接服务器：${e?.message ?? e}`);
+      throw connectionError(e, this.baseUrl, this.timeoutMs);
     }
     const text = await res.text();
     let json: any = {};
@@ -162,7 +220,13 @@ export class OjApi {
       /* ignore */
     }
     if (!res.ok || (json.status && json.status !== 200)) {
-      throw new OjError(json?.msg || `登录失败（HTTP ${res.status}）`, res.status, json?.status);
+      const serverError = res.status >= 500 || Number(json?.status) >= 500;
+      throw new OjError(
+        json?.msg || (serverError ? `服务器异常（HTTP ${res.status}）` : `登录失败（HTTP ${res.status}）`),
+        res.status,
+        json?.status,
+        serverError,
+      );
     }
     const token = res.headers.get('authorization') || res.headers.get('Authorization') || '';
     if (!token) {
@@ -536,7 +600,12 @@ export class OjApi {
     form.append('image', new Blob([new Uint8Array(buf)], { type: mime || 'image/png' }), filename || 'avatar.png');
     const headers: Record<string, string> = { 'Url-Type': 'general' };
     if (token) headers['Authorization'] = token;
-    const res = await fetch(url, { method: 'POST', headers, body: form as any });
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(url, { method: 'POST', headers, body: form as any }, this.timeoutMs);
+    } catch (e: any) {
+      throw connectionError(e, this.baseUrl, this.timeoutMs);
+    }
     const text = await res.text();
     let json: any;
     try {
