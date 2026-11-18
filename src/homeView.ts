@@ -659,8 +659,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .refresh-btn{flex:0 0 34px;min-width:34px;align-self:center;margin:0 2px;padding:5px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;background:transparent;color:var(--vscode-foreground);font-family:inherit;font-size:15px;line-height:1;cursor:pointer;}
  .refresh-btn:hover{background:rgba(127,127,127,.18);}
  .refresh-btn:disabled{opacity:.55;cursor:default;}
- .refresh-hint{position:fixed;left:50%;bottom:14px;transform:translate(-50%,6px);z-index:30;padding:5px 12px;border-radius:12px;background:var(--vscode-notifications-background,#333);color:var(--vscode-notifications-foreground,#fff);font-size:11px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
- .refresh-hint.show{opacity:.96;transform:translate(-50%,0);}
  .body{flex:1;overflow:auto;padding:8px 8px 30px;}
  input.search{width:100%;box-sizing:border-box;padding:6px 8px;margin:2px 0 8px;border-radius:4px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));background:var(--vscode-input-background);color:var(--vscode-input-foreground);}
  .item{padding:5px 6px;border-radius:4px;cursor:pointer;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;}
@@ -730,7 +728,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  <button class="refresh-btn" id="btn-refresh-list" title="刷新当前列表" aria-label="刷新当前列表">↻</button>
 </div>
 <div class="body" id="content"><div class="empty">加载中…</div></div>
-<div class="refresh-hint" id="refresh-hint"></div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
  let activeTab = 'home';
@@ -758,8 +755,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    clearTimeout(refreshTimer);
    refreshListBtn.disabled = false;
    refreshListBtn.title = '刷新当前列表';
-   const hint = document.getElementById('refresh-hint');
-   if(hint){ hint.textContent = '已刷新'; hint.classList.add('show'); setTimeout(function(){ hint.classList.remove('show'); }, 1000); }
  }
  if (refreshListBtn) refreshListBtn.addEventListener('click', function(){
    if(refreshListBtn.disabled) return;
