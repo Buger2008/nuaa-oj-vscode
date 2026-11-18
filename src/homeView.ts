@@ -92,17 +92,22 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   /** Refresh exactly the list currently visible in the active tab. */
   private async refreshTab(tab: string, keyword: string, statusMode?: string): Promise<void> {
     if (!this.view) return;
-    if (tab === 'home') {
-      await this.sendHome();
-    } else if (tab === 'status') {
-      if (statusMode === 'self') await this.sendSelfTests({ onlyMine: false, status: '', page: 1, size: 20 });
-      else await this.sendStatus({ onlyMine: false, status: '', page: 1, size: 30 });
-    } else if (tab === 'rank') {
-      await this.sendRank({ kind: 'acm', page: 1, size: 30, search: '' });
-    } else if (tab === 'my') {
-      this.view.webview.postMessage({ type: 'data', tab: 'my', payload: this.userBrief(this.auth.currentUser) });
-    } else {
-      await this.sendTab(tab, keyword);
+    this.view.webview.postMessage({ type: 'refreshStart', tab });
+    try {
+      if (tab === 'home') {
+        await this.sendHome();
+      } else if (tab === 'status') {
+        if (statusMode === 'self') await this.sendSelfTests({ onlyMine: false, status: '', page: 1, size: 20 });
+        else await this.sendStatus({ onlyMine: false, status: '', page: 1, size: 30 });
+      } else if (tab === 'rank') {
+        await this.sendRank({ kind: 'acm', page: 1, size: 30, search: '' });
+      } else if (tab === 'my') {
+        this.view.webview.postMessage({ type: 'data', tab: 'my', payload: this.userBrief(this.auth.currentUser) });
+      } else {
+        await this.sendTab(tab, keyword);
+      }
+    } finally {
+      this.view?.webview.postMessage({ type: 'refreshDone', tab });
     }
   }
 
@@ -653,6 +658,11 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .tab.has-dot-red::after{background:#f56c6c;} .tab.has-dot-yellow::after{background:#e6a23c;}
  .refresh-btn{flex:0 0 34px;min-width:34px;align-self:center;margin:0 2px;padding:5px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;background:transparent;color:var(--vscode-foreground);font-family:inherit;font-size:15px;line-height:1;cursor:pointer;}
  .refresh-btn:hover{background:rgba(127,127,127,.18);}
+ .refresh-btn:disabled{opacity:.55;cursor:default;}
+ .refresh-btn.refreshing{animation:refresh-spin .8s linear infinite;}
+ @keyframes refresh-spin{to{transform:rotate(360deg);}}
+ .refresh-hint{position:fixed;left:50%;bottom:14px;transform:translate(-50%,6px);z-index:30;padding:5px 12px;border-radius:12px;background:var(--vscode-notifications-background,#333);color:var(--vscode-notifications-foreground,#fff);font-size:11px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
+ .refresh-hint.show{opacity:.96;transform:translate(-50%,0);}
  .body{flex:1;overflow:auto;padding:8px 8px 30px;}
  input.search{width:100%;box-sizing:border-box;padding:6px 8px;margin:2px 0 8px;border-radius:4px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));background:var(--vscode-input-background);color:var(--vscode-input-foreground);}
  .item{padding:5px 6px;border-radius:4px;cursor:pointer;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;}
@@ -722,6 +732,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  <button class="refresh-btn" id="btn-refresh-list" title="刷新当前列表" aria-label="刷新当前列表">↻</button>
 </div>
 <div class="body" id="content"><div class="empty">加载中…</div></div>
+<div class="refresh-hint" id="refresh-hint"></div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
  let activeTab = 'home';
@@ -735,7 +746,32 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); if(activeTab==='status') statusMode='formal'; if(activeTab==='problems') problemKeyword=''; setActive(); content.innerHTML='<div class="empty">加载中…</div>'; vscode.postMessage({type:'tab', tab:activeTab}); }));
  const refreshListBtn = document.getElementById('btn-refresh-list');
- if (refreshListBtn) refreshListBtn.addEventListener('click', function(){ vscode.postMessage({type:'refreshTab', tab:activeTab, keyword:problemKeyword, statusMode:statusMode}); });
+ let refreshTimer = null;
+ function refreshStart(){
+   if(!refreshListBtn) return;
+   refreshListBtn.disabled = true;
+   refreshListBtn.classList.add('refreshing');
+   refreshListBtn.textContent = '⟳';
+   refreshListBtn.title = '正在刷新…';
+   content.innerHTML = '<div class="empty">刷新中…</div>';
+   clearTimeout(refreshTimer);
+   refreshTimer = setTimeout(finishRefresh, 15000);
+ }
+ function finishRefresh(){
+   if(!refreshListBtn || !refreshListBtn.disabled) return;
+   clearTimeout(refreshTimer);
+   refreshListBtn.disabled = false;
+   refreshListBtn.classList.remove('refreshing');
+   refreshListBtn.textContent = '↻';
+   refreshListBtn.title = '刷新当前列表';
+   const hint = document.getElementById('refresh-hint');
+   if(hint){ hint.textContent = '已刷新'; hint.classList.add('show'); setTimeout(function(){ hint.classList.remove('show'); }, 1000); }
+ }
+ if (refreshListBtn) refreshListBtn.addEventListener('click', function(){
+   if(refreshListBtn.disabled) return;
+   refreshStart();
+   vscode.postMessage({type:'refreshTab', tab:activeTab, keyword:problemKeyword, statusMode:statusMode});
+ });
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
  function setHomeworkBadge(state){ const b=document.querySelector('.tab[data-tab="homework"]'); if(!b) return; b.classList.toggle('has-dot-red', state==='red'); b.classList.toggle('has-dot-yellow', state==='yellow'); }
  function applyTabs(tabs){ const list=Array.isArray(tabs)&&tabs.length?tabs:['home','problems','trainings','homework','status','rank','my']; const set={}; list.forEach(function(t){set[t]=1;}); document.querySelectorAll('.tab').forEach(function(b){ const t=b.getAttribute('data-tab'); if(t) b.style.display = set[t] ? '' : 'none'; }); if(!set[activeTab]){ activeTab=list[0]; setActive(); vscode.postMessage({type:'tab', tab:activeTab}); } }
@@ -1111,6 +1147,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
  window.addEventListener('message',(e)=>{ const m=e.data;
    if(m.type==='tabs'){ applyTabs(m.tabs); return; }
+   if(m.type==='refreshStart'){ refreshStart(); return; }
+   if(m.type==='refreshDone'){ finishRefresh(); return; }
     if(m.type==='homeworkBadge'){ setHomeworkBadge(m.state||''); return; }
    if(m.type==='status'){ if(activeTab!=='status' || statusMode!=='formal') return; renderStatus(m.payload, m.filters); return; }
    if(m.type==='selfTests'){ if(activeTab!=='status' || statusMode!=='self') return; renderSelfTests(m.payload, m.filters); return; }
