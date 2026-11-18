@@ -125,7 +125,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         void this.updateHomeworkBadge();
         break;
       case 'tab':
-        await this.sendTab(m.tab, '');
+        await this.sendTab(m.tab, String(m.keyword ?? ''));
         break;
       case 'search':
         await this.sendTab('problems', String(m.keyword ?? ''));
@@ -631,6 +631,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .tab.active{color:var(--vscode-foreground);border-bottom-color:var(--vscode-focusBorder);font-weight:600;}
  .tab.has-dot-red::after,.tab.has-dot-yellow::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:4px;vertical-align:middle;}
  .tab.has-dot-red::after{background:#f56c6c;} .tab.has-dot-yellow::after{background:#e6a23c;}
+ .refresh-btn{flex:0 0 34px;min-width:34px;align-self:center;margin:0 2px;padding:5px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;background:transparent;color:var(--vscode-foreground);font-family:inherit;font-size:15px;line-height:1;cursor:pointer;}
+ .refresh-btn:hover{background:rgba(127,127,127,.18);}
  .body{flex:1;overflow:auto;padding:8px 8px 30px;}
  input.search{width:100%;box-sizing:border-box;padding:6px 8px;margin:2px 0 8px;border-radius:4px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));background:var(--vscode-input-background);color:var(--vscode-input-foreground);}
  .item{padding:5px 6px;border-radius:4px;cursor:pointer;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;}
@@ -697,11 +699,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  <button class="tab" data-tab="status">状态</button>
  <button class="tab" data-tab="rank">排名</button>
  <button class="tab" data-tab="my">我的</button>
+ <button class="refresh-btn" id="btn-refresh-list" title="刷新当前列表" aria-label="刷新当前列表">↻</button>
 </div>
 <div class="body" id="content"><div class="empty">加载中…</div></div>
 <script nonce="${nonce}">
  const vscode = acquireVsCodeApi();
  let activeTab = 'home';
+ let problemKeyword = '';
  let state = { loggedIn:false, user:null };
  const content = document.getElementById('content');
  const el = (tag, cls, txt) => { const e=document.createElement(tag); if(cls) e.className=cls; if(txt!==undefined) e.textContent=txt; return e; };
@@ -709,7 +713,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  const rtip=document.createElement('div'); rtip.className='rtip'; document.body.appendChild(rtip);
  function attachTips(root){ if(!root||!root.querySelectorAll) return; root.querySelectorAll('[data-tip]').forEach(function(el){ el.addEventListener('mousemove',function(e){ rtip.textContent=el.getAttribute('data-tip'); rtip.style.display='block'; var w=rtip.offsetWidth||0, h=rtip.offsetHeight||0; var vw=(window&&window.innerWidth)||(document.documentElement&&document.documentElement.clientWidth)||9999; var vh=(window&&window.innerHeight)||(document.documentElement&&document.documentElement.clientHeight)||9999; var x=e.clientX+12; if(x+w>vw-6) x=e.clientX-w-12; if(x<4) x=4; var y=e.clientY+12; if(y+h>vh-6) y=e.clientY-h-12; if(y<4) y=4; rtip.style.left=x+'px'; rtip.style.top=y+'px'; }); el.addEventListener('mouseleave',function(){ rtip.style.display='none'; }); }); }
 
- document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); if(activeTab==='status') statusMode='formal'; setActive(); content.innerHTML='<div class="empty">加载中…</div>'; vscode.postMessage({type:'tab', tab:activeTab}); }));
+ document.querySelectorAll('.tab').forEach((b)=>b.addEventListener('click',()=>{ activeTab=b.getAttribute('data-tab'); if(activeTab==='status') statusMode='formal'; if(activeTab==='problems') problemKeyword=''; setActive(); content.innerHTML='<div class="empty">加载中…</div>'; vscode.postMessage({type:'tab', tab:activeTab}); }));
+ const refreshListBtn = document.getElementById('btn-refresh-list');
+ if (refreshListBtn) refreshListBtn.addEventListener('click', function(){ vscode.postMessage({type:'refresh'}); });
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
  function setHomeworkBadge(state){ const b=document.querySelector('.tab[data-tab="homework"]'); if(!b) return; b.classList.toggle('has-dot-red', state==='red'); b.classList.toggle('has-dot-yellow', state==='yellow'); }
  function applyTabs(tabs){ const list=Array.isArray(tabs)&&tabs.length?tabs:['home','problems','trainings','homework','status','rank','my']; const set={}; list.forEach(function(t){set[t]=1;}); document.querySelectorAll('.tab').forEach(function(b){ const t=b.getAttribute('data-tab'); if(t) b.style.display = set[t] ? '' : 'none'; }); if(!set[activeTab]){ activeTab=list[0]; setActive(); vscode.postMessage({type:'tab', tab:activeTab}); } }
@@ -784,8 +790,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  // 自由练习
  function renderProblems(data, keyword){
    content.innerHTML='';
+   problemKeyword = keyword || '';
    const inp=el('input','search'); inp.placeholder='搜索题号 / 标题（回车）'; inp.value=keyword||'';
-   inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ inp.disabled=true; inp.placeholder='搜索中…'; vscode.postMessage({type:'search', keyword:inp.value}); } });
+   inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ problemKeyword=inp.value; inp.disabled=true; inp.placeholder='搜索中…'; vscode.postMessage({type:'search', keyword:inp.value}); } });
    content.appendChild(inp);
    if(data.needLogin){ needLogin(); return; }
    if(data.error){ error(data.error); return; }
@@ -1092,7 +1099,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
-   else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab}); }
+   else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab,keyword:problemKeyword}); }
    else if(m.type==='focusSearch'){ const i=document.querySelector('input.search'); if(i) i.focus(); }
    else if(m.type==='error'){ error(m.text); }
  });
