@@ -659,8 +659,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .refresh-btn{flex:0 0 34px;min-width:34px;align-self:center;margin:0 2px;padding:5px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;background:transparent;color:var(--vscode-foreground);font-family:inherit;font-size:15px;line-height:1;cursor:pointer;}
  .refresh-btn:hover{background:rgba(127,127,127,.18);}
  .refresh-btn:disabled{opacity:.55;cursor:default;}
- .refresh-btn.refreshing{animation:refresh-spin .8s linear infinite;}
- @keyframes refresh-spin{to{transform:rotate(360deg);}}
  .refresh-hint{position:fixed;left:50%;bottom:14px;transform:translate(-50%,6px);z-index:30;padding:5px 12px;border-radius:12px;background:var(--vscode-notifications-background,#333);color:var(--vscode-notifications-foreground,#fff);font-size:11px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
  .refresh-hint.show{opacity:.96;transform:translate(-50%,0);}
  .body{flex:1;overflow:auto;padding:8px 8px 30px;}
@@ -750,8 +748,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  function refreshStart(){
    if(!refreshListBtn) return;
    refreshListBtn.disabled = true;
-   refreshListBtn.classList.add('refreshing');
-   refreshListBtn.textContent = '⟳';
    refreshListBtn.title = '正在刷新…';
    content.innerHTML = '<div class="empty">刷新中…</div>';
    clearTimeout(refreshTimer);
@@ -761,8 +757,6 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(!refreshListBtn || !refreshListBtn.disabled) return;
    clearTimeout(refreshTimer);
    refreshListBtn.disabled = false;
-   refreshListBtn.classList.remove('refreshing');
-   refreshListBtn.textContent = '↻';
    refreshListBtn.title = '刷新当前列表';
    const hint = document.getElementById('refresh-hint');
    if(hint){ hint.textContent = '已刷新'; hint.classList.add('show'); setTimeout(function(){ hint.classList.remove('show'); }, 1000); }
