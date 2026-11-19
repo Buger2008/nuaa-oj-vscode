@@ -160,7 +160,9 @@ export function renderProblemHtml(
   .sample { border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 10px 12px; margin: 12px 0; }
   .sample-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
   .sample-title { font-weight: 600; }
-  .sample-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sample-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .sample-cols > div { min-width: 0; }
+  .sample-cols pre.io { max-width: 100%; box-sizing: border-box; }
   .sample-label { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 2px; }
   .muted { color: var(--vscode-descriptionForeground); }
   .banner { padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
