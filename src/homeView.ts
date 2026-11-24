@@ -567,6 +567,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   private async sendContests(): Promise<void> {
     if (!this.view) return;
     this.contestId = 0;
+    this.contestsCache = undefined;
     this.view.webview.postMessage({ type: 'data', tab: 'contests', payload: await this.getContests() });
   }
 
@@ -1039,6 +1040,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   let contestTypeFilter='all';
   function contestStatusText(s){ return Number(s)<0 ? '未开始' : Number(s)===0 ? '进行中' : '已结束'; }
   function contestTypeText(t){ const n=Number(t); return n===0 ? 'ACM' : n===1 ? 'OI' : n===2 ? 'CTF' : ('赛制'+n); }
+  function contestAuthText(a){ const n=Number(a); return n===0 ? '公开赛' : n===1 ? '私有赛' : n===2 ? '保护赛' : '需要密码'; }
   function contestTime(c){ const a=String(c.startTime||'').slice(0,16).replace('T',' '); const b=String(c.endTime||'').slice(0,16).replace('T',' '); return a||b ? (a+' ~ '+b) : '时间待定'; }
   function contestFilterChip(label, active, onClick){ const b=el('button','filter-chip'+(active?' active':''),label); b.type='button'; b.addEventListener('click',onClick); return b; }
   function renderContests(data){
@@ -1064,7 +1066,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const row=el('div','crow'); row.appendChild(el('span','ctitle',c.title||('测验 '+c.id)));
       row.appendChild(el('span','badge',contestStatusText(c.status)));
       row.appendChild(el('span','badge',contestTypeText(c.type)));
-      row.appendChild(el('span','badge',Number(c.auth)===0?'公开':'🔒 需要密码'));
+      row.appendChild(el('span','badge',contestAuthText(c.auth)));
       card.appendChild(row);
       card.appendChild(el('div','cmeta',contestTime(c)+((c.count!=null)?' · '+c.count+' 人参与':'')));
       if(c.description) card.appendChild(el('div','cmeta',c.description));
@@ -1341,7 +1343,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(m.type==='rank'){ if(activeTab!=='rank') return; renderRank(m.payload, m.filters); return; }
    if(m.type==='home'){ if(activeTab!=='home') return; renderHome(m.payload); return; }
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
-   else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='contests') renderContests(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
+   else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='contests'){ contestStatusFilter='all'; contestTypeFilter='all'; renderContests(m.payload); } else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
     else if(m.type==='contestProblems'){ if(activeTab!=='contests') return; renderContestProblems(m); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
    else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab,keyword:problemKeyword}); }
