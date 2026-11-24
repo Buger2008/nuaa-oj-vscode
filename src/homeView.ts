@@ -103,6 +103,10 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         await this.sendRank({ kind: 'acm', page: 1, size: 30, search: '' });
       } else if (tab === 'my') {
         this.view.webview.postMessage({ type: 'data', tab: 'my', payload: this.userBrief(this.auth.currentUser) });
+      } else if (tab === 'contests') {
+        this.contestsCache = undefined;
+        if (this.contestId) await this.sendContestProblems(this.contestId);
+        else await this.sendContests();
       } else {
         await this.sendTab(tab, keyword);
       }
@@ -118,7 +122,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   }
 
   private enabledTabs(): string[] {
-    const all = ['home', 'problems', 'trainings', 'homework', 'status', 'rank', 'my'];
+    const all = ['home', 'problems', 'trainings', 'contests', 'homework', 'status', 'rank', 'my'];
     const cfg = vscode.workspace.getConfiguration('nuaaOj');
     const filtered = all.filter((t) => cfg.get<boolean>(`tabs.${t}`, true));
     return filtered.length ? filtered : all;
@@ -197,6 +201,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       case 'openProblem':
         await this.cb.openProblem(String(m.value));
         break;
+      case 'openContest':
+        await this.openContest(Number(m.cid));
+        break;
+      case 'contestBack':
+        this.contestId = 0;
+        await this.sendContests();
+        break;
       case 'login':
         this.cb.openLogin();
         break;
@@ -221,6 +232,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     } else if (tab === 'trainings') {
       const data = await this.getTrainings();
       this.view.webview.postMessage({ type: 'data', tab: 'trainings', payload: data });
+    } else if (tab === 'contests') {
+      if (this.contestId) await this.sendContestProblems(this.contestId);
+      else await this.sendContests();
     } else if (tab === 'homework') {
       const data = await this.getHomework();
       this.view.webview.postMessage({ type: 'data', tab: 'homework', payload: data });
@@ -523,6 +537,115 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  // ---- Contests -------------------------------------------------------------
+  private contestsCache: any[] | undefined;
+  private contestId = 0;
+
+  private async getContests(): Promise<any> {
+    if (!(await this.auth.ensureLoggedIn(false))) return { needLogin: true, items: [] };
+    if (this.contestsCache) return { items: this.contestsCache };
+    try {
+      const page = await this.auth.api.getContestList({ currentPage: 1, limit: 100 });
+      const items = (page.records || []).map((c: any) => ({
+        id: Number(c.id),
+        title: String(c.title || ''),
+        type: Number(c.type) || 0,
+        status: Number(c.status) || 0,
+        auth: Number(c.auth) || 0,
+        description: String(c.description || ''),
+        startTime: c.startTime || '',
+        endTime: c.endTime || '',
+        count: c.count,
+      }));
+      this.contestsCache = items;
+      return { items };
+    } catch (e: any) {
+      return { error: e?.message ?? String(e), items: [] };
+    }
+  }
+
+  private async sendContests(): Promise<void> {
+    if (!this.view) return;
+    this.contestId = 0;
+    this.view.webview.postMessage({ type: 'data', tab: 'contests', payload: await this.getContests() });
+  }
+
+  private async sendContestProblems(cid: number, contest?: any): Promise<void> {
+    if (!this.view) return;
+    try {
+      const probs = await this.auth.api.getContestProblems(cid, true);
+      const pids = (probs || []).map((p: any) => Number(p.pid)).filter((n) => Number.isFinite(n) && n > 0);
+      const stMap = new Map<number, any>();
+      if (pids.length) {
+        try {
+          const res = await this.auth.api.getUserProblemStatus(pids, true, cid, undefined, true);
+          for (const k of Object.keys(res || {})) {
+            const v: any = (res as any)[k];
+            stMap.set(Number(k), v && typeof v === 'object' ? v.status : v);
+          }
+        } catch {
+          /* status is optional; contest list must still open */
+        }
+      }
+      const items = (probs || []).map((p: any) => {
+        const st = stMap.get(Number(p.pid));
+        const meta = st === undefined || st === null ? undefined : statusMeta(Number(st));
+        return {
+          id: String(p.displayId),
+          title: String(p.displayTitle || p.title || ''),
+          ac: Number(st) === 0,
+          attempted: st !== undefined && st !== null && Number(st) !== -10,
+          statusShort: meta?.short || '',
+          statusColor: meta?.color || '',
+          value: `contest/${cid}/problem/${p.displayId}`,
+        };
+      });
+      this.view.webview.postMessage({ type: 'contestProblems', cid, contest: contest || null, items });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'contestProblems', cid, error: e?.message ?? String(e), items: [] });
+    }
+  }
+
+  private async openContest(cid: number): Promise<void> {
+    if (!this.view) return;
+    if (!(await this.auth.ensureLoggedIn(false))) {
+      this.view.webview.postMessage({ type: 'data', tab: 'contests', payload: { needLogin: true, items: [] } });
+      return;
+    }
+    try {
+      const info = await this.auth.api.getContestInfo(cid);
+      let access = Number(info.auth) === 0;
+      if (!access) {
+        const a = await this.auth.api.getContestAccess(cid);
+        access = !!a?.access;
+      }
+      if (!access && Number(info.auth) !== 0) {
+        const pwd = await vscode.window.showInputBox({
+          password: true,
+          ignoreFocusOut: true,
+          prompt: `请输入「${info.title || '测验'}」的比赛密码`,
+          placeHolder: '比赛密码',
+        });
+        if (pwd === undefined) {
+          await this.sendContests();
+          return;
+        }
+        try {
+          await this.auth.api.registerContest(cid, pwd);
+        } catch (e: any) {
+          vscode.window.showErrorMessage(`进入测验失败：${e?.message ?? String(e)}`);
+          await this.sendContests();
+          return;
+        }
+      }
+      this.contestId = cid;
+      await this.sendContestProblems(cid, info);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`进入测验失败：${e?.message ?? String(e)}`);
+      await this.sendContests();
+    }
+  }
+
   /** Build the raw chapter list used by both the homework tab and its tab badge. */
   private collectHomeworkChapters(d: any): any[] {
     const kp = d?.knowledge_problems || {};
@@ -664,6 +787,12 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .item{padding:5px 6px;border-radius:4px;cursor:pointer;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;}
  .item:hover{background:rgba(127,127,127,.14);}
  .item .t{overflow:hidden;text-overflow:ellipsis;flex:1;}
+ .contest-card{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:10px;margin:8px 0;display:flex;flex-direction:column;gap:5px;}
+ .contest-card .ctitle{font-weight:700;font-size:13px;}
+ .contest-card .cmeta{font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.45;}
+ .contest-card .crow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+ .cbtn{align-self:flex-start;font-family:inherit;font-size:12px;padding:4px 10px;border:1px solid var(--vscode-button-border,var(--vscode-panel-border));border-radius:4px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer;}
+ .cbtn:disabled{opacity:.55;cursor:default;}
  .id{color:var(--vscode-descriptionForeground);font-size:11.5px;}
  .ok{color:#67c23a;font-weight:700;}
  .diff{font-size:10px;padding:0 5px;border-radius:8px;color:#fff;flex:none;}
@@ -721,6 +850,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  <button class="tab active" data-tab="home">首页</button>
  <button class="tab" data-tab="problems">自由练习</button>
  <button class="tab" data-tab="trainings">课内实验</button>
+ <button class="tab" data-tab="contests">测验</button>
  <button class="tab" data-tab="homework">作业</button>
  <button class="tab" data-tab="status">状态</button>
  <button class="tab" data-tab="rank">排名</button>
@@ -763,7 +893,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  });
  function setActive(){ document.querySelectorAll('.tab').forEach((b)=>b.classList.toggle('active', b.getAttribute('data-tab')===activeTab)); }
  function setHomeworkBadge(state){ const b=document.querySelector('.tab[data-tab="homework"]'); if(!b) return; b.classList.toggle('has-dot-red', state==='red'); b.classList.toggle('has-dot-yellow', state==='yellow'); }
- function applyTabs(tabs){ const list=Array.isArray(tabs)&&tabs.length?tabs:['home','problems','trainings','homework','status','rank','my']; const set={}; list.forEach(function(t){set[t]=1;}); document.querySelectorAll('.tab').forEach(function(b){ const t=b.getAttribute('data-tab'); if(t) b.style.display = set[t] ? '' : 'none'; }); if(!set[activeTab]){ activeTab=list[0]; setActive(); vscode.postMessage({type:'tab', tab:activeTab}); } }
+ function applyTabs(tabs){ const list=Array.isArray(tabs)&&tabs.length?tabs:['home','problems','trainings','contests','homework','status','rank','my']; const set={}; list.forEach(function(t){set[t]=1;}); document.querySelectorAll('.tab').forEach(function(b){ const t=b.getAttribute('data-tab'); if(t) b.style.display = set[t] ? '' : 'none'; }); if(!set[activeTab]){ activeTab=list[0]; setActive(); vscode.postMessage({type:'tab', tab:activeTab}); } }
 
  function needLogin(){ const d=el('div','loginbox'); const b=el('button','loginbtn','登录 NUAA OJ'); b.addEventListener('click',()=>vscode.postMessage({type:'login'})); d.appendChild(el('div','muted','登录后可浏览题目、作业与提交记录')); d.appendChild(b); content.innerHTML=''; content.appendChild(d); }
  function error(t){ content.innerHTML=''; content.appendChild(el('div','err', t)); }
@@ -898,7 +1028,51 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    });
    if(!(data.chapters||[]).length) content.appendChild(el('div','empty','当前课程暂无作业。'));
  }
- function probItem(p){ const it=el('div','item'); it.appendChild(el('span','id',p.id)); if(p.dlabel) it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel)); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'未通过'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); return it; }
+ // 测验
+  function contestStatusText(s){ return Number(s)<0 ? '未开始' : Number(s)===0 ? '进行中' : '已结束'; }
+  function contestTypeText(t){ return Number(t)===0 ? 'ACM' : 'OI'; }
+  function contestTime(c){ const a=String(c.startTime||'').slice(0,16).replace('T',' '); const b=String(c.endTime||'').slice(0,16).replace('T',' '); return a||b ? (a+' ~ '+b) : '时间待定'; }
+  function renderContests(data){
+    content.innerHTML='';
+    if(data.needLogin){ needLogin(); return; }
+    if(data.error){ error(data.error); return; }
+    const all=data.items||[];
+    all.forEach(function(c){
+      const card=el('div','contest-card');
+      const row=el('div','crow'); row.appendChild(el('span','ctitle',c.title||('测验 '+c.id)));
+      row.appendChild(el('span','badge',contestStatusText(c.status)));
+      row.appendChild(el('span','badge',contestTypeText(c.type)));
+      if(Number(c.auth)!==0) row.appendChild(el('span','badge','🔒 需要密码'));
+      card.appendChild(row);
+      card.appendChild(el('div','cmeta',contestTime(c)+((c.count!=null)?' · '+c.count+' 人参与':'')));
+      if(c.description) card.appendChild(el('div','cmeta',c.description));
+      const btn=el('button','cbtn','进入测验');
+      btn.addEventListener('click',function(){ btn.disabled=true; content.innerHTML='<div class="empty">加载中…</div>'; vscode.postMessage({type:'openContest', cid:c.id}); });
+      card.appendChild(btn);
+      content.appendChild(card);
+    });
+    if(!all.length) content.appendChild(el('div','empty','暂无测验。'));
+  }
+  function renderContestProblems(data){
+    content.innerHTML='';
+    const back=el('button','cbtn','‹ 返回测验');
+    back.addEventListener('click',function(){ vscode.postMessage({type:'contestBack'}); });
+    content.appendChild(back);
+    if(data.error){ content.appendChild(el('div','err',data.error)); return; }
+    content.appendChild(secTitle((data.contest&&data.contest.title)||'测验题目'));
+    const list=el('div');
+    (data.items||[]).forEach(function(p){
+      const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','t',p.title));
+      if(p.ac){ it.appendChild(el('span','ok','✓')); }
+      else if(p.attempted){ const pg=el('span','pill',p.statusShort||'尝试'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); }
+      it.title=p.title;
+      it.addEventListener('click',function(){ vscode.postMessage({type:'openProblem', value:p.value}); });
+      list.appendChild(it);
+    });
+    content.appendChild(list);
+    if(!(data.items||[]).length) content.appendChild(el('div','empty','该测验暂无题目。'));
+  }
+  function probItem(p){ const it=el('div','item'); it.appendChild(el('span','id',p.id)); if(p.dlabel) it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel)); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'未通过'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); return it; }
  // 我的
  function renderMy(user){
    content.innerHTML='';
@@ -1144,7 +1318,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(m.type==='rank'){ if(activeTab!=='rank') return; renderRank(m.payload, m.filters); return; }
    if(m.type==='home'){ if(activeTab!=='home') return; renderHome(m.payload); return; }
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
-   else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
+   else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='contests') renderContests(m.payload); else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
+    else if(m.type==='contestProblems'){ if(activeTab!=='contests') return; renderContestProblems(m); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
    else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab,keyword:problemKeyword}); }
    else if(m.type==='focusSearch'){ const i=document.querySelector('input.search'); if(i) i.focus(); }

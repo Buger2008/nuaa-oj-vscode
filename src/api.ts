@@ -288,6 +288,31 @@ export class OjApi {
     return this.request('/api/get-training-problem-list', { query: { tid } });
   }
 
+  // ---- Contests -------------------------------------------------------------
+  async getContestList(params: { currentPage?: number; limit?: number; status?: number; type?: number; keyword?: string } = {}): Promise<Paged<any>> {
+    return this.request('/api/get-contest-list', { query: params });
+  }
+
+  async getContestInfo(cid: number): Promise<any> {
+    return this.request('/api/get-contest-info', { query: { cid } });
+  }
+
+  async getContestAccess(cid: number): Promise<{ access: boolean }> {
+    return this.request('/api/get-contest-access', { query: { cid } });
+  }
+
+  async registerContest(cid: number, password: string): Promise<void> {
+    return this.request('/api/register-contest', { method: 'POST', body: { cid, password } });
+  }
+
+  async getContestProblems(cid: number, isContainsContestEndJudge = false): Promise<any[]> {
+    return this.request('/api/get-contest-problem', { query: { cid, isContainsContestEndJudge } });
+  }
+
+  async getContestProblemDetail(cid: number, displayId: string, isContainsContestEndJudge = false): Promise<ProblemDetail> {
+    return this.request('/api/get-contest-problem-details', { query: { cid, displayId, isContainsContestEndJudge } });
+  }
+
   /**
    * Recommendation service "learning map": the student's course, knowledge points (chapters),
    * and per-knowledge-point homework / practice / recommended problems plus progress.
@@ -348,6 +373,7 @@ export class OjApi {
     userInput: string;
     expectedOutput?: string;
     type?: 'public' | 'contest' | 'group';
+    cid?: number;
     mode?: string;
     isRemoteJudge?: boolean;
   }): Promise<string> {
@@ -358,6 +384,7 @@ export class OjApi {
         language: params.language,
         code: params.code,
         type: params.type || 'public',
+        cid: params.cid ?? 0,
         userInput: params.userInput,
         expectedOutput: params.expectedOutput ?? '',
         mode: params.mode ?? '',
@@ -386,8 +413,22 @@ export class OjApi {
     completeProblemID?: boolean;
     status?: number;
     username?: string;
+    contestID?: number;
   } = {}): Promise<Paged<SubmissionRecord>> {
     return this.request('/api/get-submission-list', { query: params });
+  }
+
+  async getContestSubmissionList(params: {
+    limit?: number;
+    currentPage?: number;
+    onlyMine?: boolean;
+    problemID?: string;
+    completeProblemID?: boolean;
+    status?: number;
+    username?: string;
+    contestID?: number;
+  } = {}): Promise<Paged<SubmissionRecord>> {
+    return this.request('/api/contest-submissions', { query: params });
   }
 
   // ---- NUAA learning assistant (recommendation service) ---------------------

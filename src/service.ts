@@ -66,6 +66,14 @@ export function parseTarget(input: string): ParsedTarget | undefined {
     }
   }
   // plain id like E1, 9999, CPP2-4
+  const m = /^\/?(training|contest)\/(\d+)\/problem\/([^/?#]+)/i.exec(s);
+  if (m) {
+    const kind = m[1].toLowerCase() as 'training' | 'contest';
+    const id = decodeURIComponent(m[3]);
+    return kind === 'training'
+      ? { kind, displayId: id, tid: Number(m[2]) }
+      : { kind, displayId: id, cid: Number(m[2]) };
+  }
   return { kind: 'problem', displayId: s };
 }
 
@@ -91,7 +99,7 @@ export class NuaaOjService implements ProblemPanelHost {
   private testHistory = new Map<string, any[]>();
 
   private historyKey(ctx: ProblemContext): string {
-    return `${ctx.kind}:${ctx.tid ?? 0}:${ctx.displayId}`;
+    return `${ctx.kind}:${ctx.kind === 'contest' ? (ctx.cid ?? 0) : (ctx.tid ?? 0)}:${ctx.displayId}`;
   }
 
   private recordTest(ctx: ProblemContext, kind: string, result: RunResult): void {
@@ -106,13 +114,25 @@ export class NuaaOjService implements ProblemPanelHost {
   // ---- RecordsPanel host -----------------------------------------------------
   async fetchSubmissions(ctx: ProblemContext, onlyMine: boolean): Promise<{ records: any[]; total: number }> {
     if (!(await this.auth.ensureLoggedIn())) return { records: [], total: 0 };
-    const page = await this.auth.api.getSubmissionList({
-      limit: 100,
-      currentPage: 1,
-      onlyMine,
-      problemID: ctx.displayId,
-      completeProblemID: true,
-    });
+    let page: any;
+    if (ctx.kind === 'contest' && ctx.cid) {
+      page = await this.auth.api.getContestSubmissionList({
+        limit: 100,
+        currentPage: 1,
+        onlyMine,
+        problemID: ctx.displayId,
+        completeProblemID: true,
+        contestID: ctx.cid,
+      });
+    } else {
+      page = await this.auth.api.getSubmissionList({
+        limit: 100,
+        currentPage: 1,
+        onlyMine,
+        problemID: ctx.displayId,
+        completeProblemID: true,
+      });
+    }
     return { records: page.records || [], total: page.total || 0 };
   }
 
@@ -703,15 +723,10 @@ export class NuaaOjService implements ProblemPanelHost {
       return undefined;
     }
     if (target.kind === 'contest') {
-      const go = await vscode.window.showWarningMessage(
-        '暂不支持直接打开比赛题目（比赛需要先注册，且比赛题提交规则不同）。',
-        '在浏览器打开',
-      );
-      if (go) {
-        const url = `${this.base()}/contest/${target.cid}/problem/${target.displayId}`;
-        vscode.env.openExternal(vscode.Uri.parse(url));
+      if (!target.cid) {
+        vscode.window.showErrorMessage('无法识别比赛编号。');
+        return undefined;
       }
-      return undefined;
     }
     if (!(await this.auth.ensureLoggedIn())) return undefined;
 
@@ -720,7 +735,7 @@ export class NuaaOjService implements ProblemPanelHost {
         { location: vscode.ProgressLocation.Notification, title: `正在获取题目 ${target.displayId}…` },
         () => this.fetchDetail(target),
       );
-      const ctx = buildContext(target.kind, detail, this.base(), target.tid);
+      const ctx = buildContext(target.kind, detail, this.base(), target.tid, undefined, target.cid, target.displayId);
       const prepared = await this.prepareWorkspace(ctx, detail);
       if (!prepared) return undefined; // user cancelled file-naming prompt
 
@@ -739,10 +754,13 @@ export class NuaaOjService implements ProblemPanelHost {
   }
 
   async fetchDetailFor(ctx: ProblemContext): Promise<ProblemDetail> {
-    return this.fetchDetail({ kind: ctx.kind, displayId: ctx.displayId, tid: ctx.tid });
+    return this.fetchDetail({ kind: ctx.kind, displayId: ctx.displayId, tid: ctx.tid, cid: ctx.cid });
   }
 
   private async fetchDetail(target: ParsedTarget): Promise<ProblemDetail> {
+    if (target.kind === 'contest' && target.cid) {
+      return this.auth.api.getContestProblemDetail(target.cid, target.displayId, true);
+    }
     if (target.kind === 'training' && target.tid) {
       return this.auth.api.getTrainingProblemDetail(target.displayId, target.tid);
     }
@@ -927,7 +945,10 @@ export class NuaaOjService implements ProblemPanelHost {
     let accepted = false;
     if (user && ctx.pid) {
       try {
-        const st = await this.auth.api.getUserProblemStatus([ctx.pid]);
+        const st =
+          ctx.kind === 'contest' && ctx.cid
+            ? await this.auth.api.getUserProblemStatus([ctx.pid], true, ctx.cid, undefined, true)
+            : await this.auth.api.getUserProblemStatus([ctx.pid]);
         const v: any = (st as any)[String(ctx.pid)] ?? (st as any)[ctx.pid];
         const s = v && typeof v === 'object' ? v.status : v;
         accepted = Number(s) === 0;
@@ -1135,7 +1156,8 @@ export class NuaaOjService implements ProblemPanelHost {
             code,
             userInput: sendInput,
             expectedOutput: expected,
-            type: 'public',
+            type: ctx.kind === 'contest' ? 'contest' : 'public',
+            cid: ctx.kind === 'contest' ? ctx.cid : undefined,
             isRemoteJudge: false,
           });
         } catch (e: any) {
@@ -1268,7 +1290,7 @@ export class NuaaOjService implements ProblemPanelHost {
         pid: ctx.displayId,
         language,
         code,
-        cid: 0,
+        cid: ctx.kind === 'contest' ? (ctx.cid ?? 0) : 0,
         tid: ctx.tid,
         gid: ctx.gid,
         isRemote: false,
@@ -1442,9 +1464,9 @@ export class NuaaOjService implements ProblemPanelHost {
   async reload(panel: ProblemPanel): Promise<void> {
     const ctx = panel.ctx;
     try {
-      const target: ParsedTarget = { kind: ctx.kind, displayId: ctx.displayId, tid: ctx.tid };
+      const target: ParsedTarget = { kind: ctx.kind, displayId: ctx.displayId, tid: ctx.tid, cid: ctx.cid };
       const detail = await this.fetchDetail(target);
-      const fresh = buildContext(ctx.kind, detail, this.base(), ctx.tid);
+      const fresh = buildContext(ctx.kind, detail, this.base(), ctx.tid, ctx.gid, ctx.cid, ctx.displayId);
       panel.detail = detail;
       panel.ctx.samples = fresh.samples;
       panel.ctx.title = fresh.title;
