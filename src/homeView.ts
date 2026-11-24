@@ -556,7 +556,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         startTime: c.startTime || '',
         endTime: c.endTime || '',
         count: c.count,
-      })).filter((c: any) => c.auth > 0);
+      }));
       this.contestsCache = items;
       return { items };
     } catch (e: any) {
@@ -788,6 +788,12 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .item:hover{background:rgba(127,127,127,.14);}
  .item .t{overflow:hidden;text-overflow:ellipsis;flex:1;}
  .contest-card{border:1px solid var(--vscode-panel-border);border-radius:8px;padding:10px;margin:8px 0;display:flex;flex-direction:column;gap:5px;}
+ .contest-filters{display:flex;flex-direction:column;gap:5px;margin:4px 0 6px;}
+ .filter-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+ .filter-label{font-size:11px;color:var(--vscode-descriptionForeground);min-width:28px;}
+ .filter-chip{font-family:inherit;font-size:11px;padding:2px 7px;border-radius:9px;border:1px solid var(--vscode-panel-border);background:transparent;color:var(--vscode-foreground);cursor:pointer;}
+ .filter-chip.active{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border-color:transparent;}
+ .filter-count{font-size:11px;color:var(--vscode-descriptionForeground);}
  .contest-card .ctitle{font-weight:700;font-size:13px;}
  .contest-card .cmeta{font-size:11px;color:var(--vscode-descriptionForeground);line-height:1.45;}
  .contest-card .crow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
@@ -1029,20 +1035,36 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(!(data.chapters||[]).length) content.appendChild(el('div','empty','当前课程暂无作业。'));
  }
  // 测验
+  let contestStatusFilter='all';
+  let contestTypeFilter='all';
   function contestStatusText(s){ return Number(s)<0 ? '未开始' : Number(s)===0 ? '进行中' : '已结束'; }
-  function contestTypeText(t){ return Number(t)===0 ? 'ACM' : 'OI'; }
+  function contestTypeText(t){ const n=Number(t); return n===0 ? 'ACM' : n===1 ? 'OI' : n===2 ? 'CTF' : ('赛制'+n); }
   function contestTime(c){ const a=String(c.startTime||'').slice(0,16).replace('T',' '); const b=String(c.endTime||'').slice(0,16).replace('T',' '); return a||b ? (a+' ~ '+b) : '时间待定'; }
+  function contestFilterChip(label, active, onClick){ const b=el('button','filter-chip'+(active?' active':''),label); b.type='button'; b.addEventListener('click',onClick); return b; }
   function renderContests(data){
     content.innerHTML='';
     if(data.needLogin){ needLogin(); return; }
     if(data.error){ error(data.error); return; }
     const all=data.items||[];
-    all.forEach(function(c){
+    const filterBox=el('div','contest-filters');
+    const statusRow=el('div','filter-row'); statusRow.appendChild(el('span','filter-label','状态'));
+    [['all','全部'],['0','进行中'],['-1','未开始'],['1','已结束']].forEach(function(o){ statusRow.appendChild(contestFilterChip(o[1], contestStatusFilter===o[0], function(){ contestStatusFilter=o[0]; renderContests(data); })); });
+    filterBox.appendChild(statusRow);
+    const typeRow=el('div','filter-row'); typeRow.appendChild(el('span','filter-label','赛制'));
+    [['all','全部'],['0','ACM'],['1','OI'],['2','CTF']].forEach(function(o){ typeRow.appendChild(contestFilterChip(o[1], contestTypeFilter===o[0], function(){ contestTypeFilter=o[0]; renderContests(data); })); });
+    filterBox.appendChild(typeRow);
+    const filtered=all.filter(function(c){
+      return (contestStatusFilter==='all' || String(c.status)===contestStatusFilter)
+        && (contestTypeFilter==='all' || String(c.type)===contestTypeFilter);
+    });
+    filterBox.appendChild(el('div','filter-count','共 '+filtered.length+' / '+all.length+' 场'));
+    content.appendChild(filterBox);
+    filtered.forEach(function(c){
       const card=el('div','contest-card');
       const row=el('div','crow'); row.appendChild(el('span','ctitle',c.title||('测验 '+c.id)));
       row.appendChild(el('span','badge',contestStatusText(c.status)));
       row.appendChild(el('span','badge',contestTypeText(c.type)));
-      if(Number(c.auth)!==0) row.appendChild(el('span','badge','🔒 需要密码'));
+      row.appendChild(el('span','badge',Number(c.auth)===0?'公开':'🔒 需要密码'));
       card.appendChild(row);
       card.appendChild(el('div','cmeta',contestTime(c)+((c.count!=null)?' · '+c.count+' 人参与':'')));
       if(c.description) card.appendChild(el('div','cmeta',c.description));
@@ -1052,6 +1074,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       content.appendChild(card);
     });
     if(!all.length) content.appendChild(el('div','empty','暂无测验。'));
+    else if(!filtered.length) content.appendChild(el('div','empty','没有符合筛选条件的测验。'));
   }
   function renderContestProblems(data){
     content.innerHTML='';
