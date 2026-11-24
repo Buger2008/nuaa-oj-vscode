@@ -556,7 +556,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         startTime: c.startTime || '',
         endTime: c.endTime || '',
         count: c.count,
-      }));
+      })).filter((c: any) => c.auth > 0);
       this.contestsCache = items;
       return { items };
     } catch (e: any) {
