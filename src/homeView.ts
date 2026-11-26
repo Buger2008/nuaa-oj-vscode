@@ -1169,7 +1169,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   function contestStatusText(s){ return Number(s)<0 ? '未开始' : Number(s)===0 ? '进行中' : '已结束'; }
   function contestTypeText(t){ const n=Number(t); return n===0 ? 'ACM' : n===1 ? 'OI' : n===2 ? 'CTF' : ('赛制'+n); }
   function contestAuthText(a){ const n=Number(a); return n===0 ? '公开赛' : n===1 ? '私有赛' : n===2 ? '保护赛' : '需要密码'; }
-  function contestTime(c){ const a=String(c.startTime||'').slice(0,16).replace('T',' '); const b=String(c.endTime||'').slice(0,16).replace('T',' '); return a||b ? (a+' ~ '+b) : '时间待定'; }
+  function contestLocal(v){ if(v==null||v==='') return ''; var ms=typeof v==='number'?v:Date.parse(String(v).replace(' ','T')); if(!Number.isFinite(ms)) return String(v); var d=new Date(ms); function p(n){return (n<10?'0':'')+n;} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+  function contestTime(c){ const a=contestLocal(c.startTime); const b=contestLocal(c.endTime); return a||b ? (a+' ~ '+b) : '时间待定'; }
   function contestFilterChip(label, active, onClick){ const b=el('button','filter-chip'+(active?' active':''),label); b.type='button'; b.addEventListener('click',onClick); return b; }
   function renderContests(data){
     content.innerHTML='';
