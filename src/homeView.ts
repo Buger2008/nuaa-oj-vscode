@@ -225,6 +225,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
           search: String(m.search || ''),
         });
         break;
+      case 'contestAnnouncements':
+        await this.sendContestAnnouncements({
+          cid: Number(m.cid || this.contestId),
+          page: Number(m.page) || 1,
+          size: Number(m.size) || 20,
+        });
+        break;
       case 'login':
         this.cb.openLogin();
         break;
@@ -630,7 +637,13 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       } catch (e: any) {
         rank = { error: e?.message ?? String(e), items: [], total: 0, page: 1, size: 30, pages: 0 };
       }
-      this.view.webview.postMessage({ type: 'contestProblems', cid, contest: contest || null, items, submissions, rank });
+      let announcements: any = null;
+      try {
+        announcements = await this.fetchContestAnnouncements(cid, 1, 20);
+      } catch (e: any) {
+        announcements = { error: e?.message ?? String(e), items: [], total: 0, page: 1, size: 20, pages: 0 };
+      }
+      this.view.webview.postMessage({ type: 'contestProblems', cid, contest: contest || null, items, submissions, rank, announcements });
     } catch (e: any) {
       this.view.webview.postMessage({ type: 'contestProblems', cid, error: e?.message ?? String(e), items: [] });
     }
@@ -698,6 +711,32 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     }));
     const total = Number(res.total) || 0;
     return { items, total, page, size, pages: (res as any).pages || Math.max(1, Math.ceil(total / size)) };
+  }
+
+  private async fetchContestAnnouncements(cid: number, page: number, size: number): Promise<any> {
+    const res: any = await this.auth.api.getContestAnnouncements(cid, page, size);
+    const items = (res.records || []).map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      content: a.content,
+      username: a.username,
+      gmtCreate: a.gmtCreate ? new Date(a.gmtCreate).toLocaleString() : '',
+    }));
+    const total = Number(res.total) || 0;
+    return { items, total, page, size, pages: (res as any).pages || Math.max(1, Math.ceil(total / size)) };
+  }
+
+  private async sendContestAnnouncements(f: any): Promise<void> {
+    if (!this.view) return;
+    const cid = Number(f?.cid) || this.contestId;
+    const page = Math.max(1, Number(f?.page) || 1);
+    const size = [10, 20, 50].includes(Number(f?.size)) ? Number(f?.size) : 20;
+    try {
+      const payload = await this.fetchContestAnnouncements(cid, page, size);
+      this.view.webview.postMessage({ type: 'contestAnnouncements', cid, payload, filters: { page, size } });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'contestAnnouncements', cid, payload: { error: e?.message ?? String(e), items: [], total: 0, page, size, pages: 0 }, filters: { page, size } });
+    }
   }
 
   private async sendContestSubmissions(f: any): Promise<void> {
@@ -925,6 +964,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   .contest-progress{height:6px;background:rgba(127,127,127,.25);border-radius:4px;overflow:hidden;margin:2px 0 4px;}
   .contest-progress-fill{height:100%;background:var(--vscode-progressBar-background,#0a84ff);}
   .contest-countdown{font-variant-numeric:tabular-nums;color:var(--vscode-textLink-foreground,#0a84ff);}
+  .contest-intro,.contest-announcement-content{font-size:12.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;padding:8px;border:1px solid var(--vscode-panel-border);border-radius:6px;background:rgba(127,127,127,.04);}
  .id{color:var(--vscode-descriptionForeground);font-size:11.5px;}
  .ok{color:#67c23a;font-weight:700;}
  .diff{font-size:10px;padding:0 5px;border-radius:8px;color:#fff;flex:none;}
@@ -1163,9 +1203,10 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  // 测验
   let contestStatusFilter='all';
   let contestTypeFilter='all';
-  let contestTab='problems';
+  let contestTab='intro';
   let lastContestData=null;
   let contestCountdownTimer=null;
+  let announcementDetail=null;
   function contestStatusText(s){ return Number(s)<0 ? '未开始' : Number(s)===0 ? '进行中' : '已结束'; }
   function contestTypeText(t){ const n=Number(t); return n===0 ? 'ACM' : n===1 ? 'OI' : n===2 ? 'CTF' : ('赛制'+n); }
   function contestAuthText(a){ const n=Number(a); return n===0 ? '公开赛' : n===1 ? '私有赛' : n===2 ? '保护赛' : '需要密码'; }
@@ -1242,7 +1283,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     content.innerHTML='';
     var previousCid=lastContestData&&lastContestData.cid;
     lastContestData=data;
-    if(String(data.cid)!==String(previousCid)) contestTab='problems';
+    if(String(data.cid)!==String(previousCid)){ contestTab='intro'; announcementDetail=null; }
     var back=el('button','cbtn','‹ 返回测验');
     back.addEventListener('click',function(){ contestTab='problems'; lastContestData=null; vscode.postMessage({type:'contestBack'}); });
     content.appendChild(back);
@@ -1265,12 +1306,18 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     }
     content.appendChild(card);
     var tabBar=el('div','filters');
-    [['problems','题目'],['submissions','提交'],['rank','排名']].forEach(function(pair){
+    [['intro','简介'],['problems','题目'],['submissions','提交'],['rank','排名'],['announcements','公告']].forEach(function(pair){
       var b=el('button','tab'+(contestTab===pair[0]?' active':''),pair[1]);
-      b.addEventListener('click',function(){ if(contestTab===pair[0])return; contestTab=pair[0]; renderContestProblems(lastContestData); });
+      b.addEventListener('click',function(){ if(contestTab===pair[0])return; contestTab=pair[0]; if(pair[0]!=='announcements') announcementDetail=null; renderContestProblems(lastContestData); });
       tabBar.appendChild(b);
     });
     content.appendChild(tabBar);
+    if(contestTab==='intro'){
+      var intro=el('div','contest-intro');
+      intro.textContent=String(c.description||'暂无测验简介。');
+      content.appendChild(intro);
+      return;
+    }
     if(contestTab==='problems'){
       var list=el('div');
       (data.items||[]).forEach(function(p){
@@ -1320,6 +1367,31 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       });
       tbl.appendChild(tb); content.appendChild(tbl);
       content.appendChild(contestPageBar(sd,function(p){fireSub(p);}));
+      return;
+    }
+    if(contestTab==='announcements'){
+      var ad=data.announcements||{items:[]};
+      if(announcementDetail){
+        var ab=el('button','cbtn','‹ 返回公告');
+        ab.addEventListener('click',function(){ announcementDetail=null; renderContestProblems(lastContestData); });
+        content.appendChild(ab);
+        content.appendChild(secTitle(announcementDetail.title||'公告'));
+        content.appendChild(el('div','cmeta',(announcementDetail.username||'')+' · '+(announcementDetail.gmtCreate||'')));
+        var body=el('div','contest-announcement-content'); body.textContent=String(announcementDetail.content||''); content.appendChild(body);
+        return;
+      }
+      if(ad.error){ content.appendChild(el('div','err',ad.error)); return; }
+      var alist=ad.items||[];
+      if(!alist.length){ content.appendChild(el('div','empty','暂无公告。')); return; }
+      var alistBox=el('div');
+      alist.forEach(function(a){
+        var row=el('div','item'); row.appendChild(el('span','t',a.title||'公告'));
+        row.appendChild(el('span','muted',(a.username||'')+(a.gmtCreate?(' · '+a.gmtCreate):'')));
+        row.title='查看公告'; row.addEventListener('click',function(){ announcementDetail=a; renderContestProblems(lastContestData); });
+        alistBox.appendChild(row);
+      });
+      content.appendChild(alistBox);
+      content.appendChild(contestPageBar(ad,function(p){ vscode.postMessage({type:'contestAnnouncements',cid:data.cid,page:p,size:20}); }));
       return;
     }
     var rd=data.rank||{items:[]};
@@ -1602,6 +1674,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     else if(m.type==='contestProblems'){ if(activeTab!=='contests') return; renderContestProblems(m); }
     else if(m.type==='contestSubmissions'){ if(activeTab!=='contests'||!lastContestData) return; lastContestData.cid=m.cid; lastContestData.submissions=m.payload; lastContestData.submissionFilter=m.filters; contestTab='submissions'; renderContestProblems(lastContestData); }
     else if(m.type==='contestRank'){ if(activeTab!=='contests'||!lastContestData) return; lastContestData.cid=m.cid; lastContestData.rank=m.payload; lastContestData.rankFilter=m.filters; contestTab='rank'; renderContestProblems(lastContestData); }
+    else if(m.type==='contestAnnouncements'){ if(activeTab!=='contests'||!lastContestData) return; lastContestData.cid=m.cid; lastContestData.announcements=m.payload; contestTab='announcements'; announcementDetail=null; renderContestProblems(lastContestData); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
    else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab,keyword:problemKeyword}); }
    else if(m.type==='focusSearch'){ const i=document.querySelector('input.search'); if(i) i.focus(); }

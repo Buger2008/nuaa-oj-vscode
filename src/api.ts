@@ -313,6 +313,10 @@ export class OjApi {
     return this.request('/api/get-contest-problem-details', { query: { cid, displayId, isContainsContestEndJudge } });
   }
 
+  async getContestAnnouncements(cid: number, currentPage = 1, limit = 20): Promise<Paged<any>> {
+    return this.request('/api/get-contest-announcement', { query: { cid, currentPage, limit } });
+  }
+
   /** Contest rank page. Body follows HOJ ContestRankDTO. */
   async getContestRank(params: {
     cid: number;
