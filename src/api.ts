@@ -313,6 +313,32 @@ export class OjApi {
     return this.request('/api/get-contest-problem-details', { query: { cid, displayId, isContainsContestEndJudge } });
   }
 
+  /** Contest rank page. Body follows HOJ ContestRankDTO. */
+  async getContestRank(params: {
+    cid: number;
+    currentPage?: number;
+    limit?: number;
+    keyword?: string;
+    forceRefresh?: boolean;
+    removeStar?: boolean;
+    containsEnd?: boolean;
+  }): Promise<Paged<any>> {
+    return this.request('/api/get-contest-rank', {
+      method: 'POST',
+      body: {
+        cid: params.cid,
+        currentPage: params.currentPage ?? 1,
+        limit: params.limit ?? 30,
+        keyword: params.keyword ?? null,
+        forceRefresh: params.forceRefresh ?? false,
+        removeStar: params.removeStar ?? false,
+        containsEnd: params.containsEnd ?? true,
+        concernedList: [],
+        externalCidList: [],
+      },
+    });
+  }
+
   /**
    * Recommendation service "learning map": the student's course, knowledge points (chapters),
    * and per-knowledge-point homework / practice / recommended problems plus progress.
@@ -427,6 +453,8 @@ export class OjApi {
     status?: number;
     username?: string;
     contestID?: number;
+    beforeContestSubmit?: boolean;
+    containsEnd?: boolean;
   } = {}): Promise<Paged<SubmissionRecord>> {
     return this.request('/api/contest-submissions', { query: params });
   }

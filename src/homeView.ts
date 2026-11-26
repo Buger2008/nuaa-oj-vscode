@@ -208,6 +208,23 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
         this.contestId = 0;
         await this.sendContests();
         break;
+      case 'contestSubmissions':
+        await this.sendContestSubmissions({
+          cid: Number(m.cid || this.contestId),
+          page: Number(m.page) || 1,
+          size: Number(m.size) || 30,
+          onlyMine: !!m.onlyMine,
+          status: m.status == null ? '' : String(m.status),
+        });
+        break;
+      case 'contestRank':
+        await this.sendContestRank({
+          cid: Number(m.cid || this.contestId),
+          page: Number(m.page) || 1,
+          size: Number(m.size) || 30,
+          search: String(m.search || ''),
+        });
+        break;
       case 'login':
         this.cb.openLogin();
         break;
@@ -375,7 +392,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
           submitId: r.submitId,
           username: r.username,
           uid: r.uid,
-          displayPid: r.displayPid ?? r.pid,
+          displayPid: r.displayId ?? r.displayPid ?? r.pid,
           title: r.title,
           statusShort: st.short,
           statusName: st.name,
@@ -601,9 +618,114 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
           value: `contest/${cid}/problem/${p.displayId}`,
         };
       });
-      this.view.webview.postMessage({ type: 'contestProblems', cid, contest: contest || null, items });
+      let submissions: any = null;
+      let rank: any = null;
+      try {
+        submissions = await this.fetchContestSubmissions(cid, 1, 30, false, '');
+      } catch (e: any) {
+        submissions = { error: e?.message ?? String(e), items: [], total: 0, page: 1, size: 30, pages: 0 };
+      }
+      try {
+        rank = await this.fetchContestRank(cid, 1, 30, '');
+      } catch (e: any) {
+        rank = { error: e?.message ?? String(e), items: [], total: 0, page: 1, size: 30, pages: 0 };
+      }
+      this.view.webview.postMessage({ type: 'contestProblems', cid, contest: contest || null, items, submissions, rank });
     } catch (e: any) {
       this.view.webview.postMessage({ type: 'contestProblems', cid, error: e?.message ?? String(e), items: [] });
+    }
+  }
+
+  private async fetchContestSubmissions(cid: number, page: number, size: number, onlyMine: boolean, status: string): Promise<any> {
+    const res: any = await this.auth.api.getContestSubmissionList({
+      limit: size,
+      currentPage: page,
+      onlyMine,
+      status: status === '' || status == null ? undefined : Number(status),
+      completeProblemID: true,
+      contestID: cid,
+      beforeContestSubmit: false,
+      containsEnd: true,
+    });
+    const items = (res.records || []).map((r: any) => {
+      const st = statusMeta(r.status);
+      return {
+        submitId: r.submitId,
+        username: r.username,
+        uid: r.uid,
+        displayPid: r.displayId ?? r.displayPid ?? r.pid,
+        title: r.title,
+        statusShort: st.short,
+        statusName: st.name,
+        statusColor: st.color,
+        score: r.score,
+        time: r.time,
+        memory: r.memory,
+        length: r.length,
+        language: r.language,
+        judger: r.judger,
+        submitTime: r.submitTime,
+      };
+    });
+    const total = Number(res.total) || 0;
+    return { items, total, page, size, pages: (res as any).pages || Math.max(1, Math.ceil(total / size)) };
+  }
+
+  private async fetchContestRank(cid: number, page: number, size: number, search: string): Promise<any> {
+    const res: any = await this.auth.api.getContestRank({
+      cid,
+      currentPage: page,
+      limit: size,
+      keyword: search || undefined,
+      forceRefresh: false,
+      removeStar: false,
+      containsEnd: true,
+    });
+    const offset = size * (page - 1);
+    const items = (res.records || []).map((r: any, i: number) => ({
+      rank: r.rank == null ? offset + i + 1 : r.rank,
+      uid: r.uid,
+      username: r.username,
+      nickname: r.nickname,
+      realname: r.realname,
+      school: r.school,
+      avatar: r.avatar,
+      ac: r.ac,
+      total: r.total,
+      score: r.totalScore ?? r.score,
+      totalTime: r.totalTime,
+      submissionInfo: r.submissionInfo,
+    }));
+    const total = Number(res.total) || 0;
+    return { items, total, page, size, pages: (res as any).pages || Math.max(1, Math.ceil(total / size)) };
+  }
+
+  private async sendContestSubmissions(f: any): Promise<void> {
+    if (!this.view) return;
+    const cid = Number(f?.cid) || this.contestId;
+    const page = Math.max(1, Number(f?.page) || 1);
+    const size = [15, 30, 50, 100].includes(Number(f?.size)) ? Number(f?.size) : 30;
+    const onlyMine = !!f?.onlyMine;
+    const status = String(f?.status ?? '');
+    try {
+      const payload = await this.fetchContestSubmissions(cid, page, size, onlyMine, status);
+      this.view.webview.postMessage({ type: 'contestSubmissions', cid, payload, filters: { page, size, onlyMine, status } });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'contestSubmissions', cid, payload: { error: e?.message ?? String(e), items: [], total: 0, page, size, pages: 0 }, filters: { page, size, onlyMine, status } });
+    }
+  }
+
+  private async sendContestRank(f: any): Promise<void> {
+    if (!this.view) return;
+    const cid = Number(f?.cid) || this.contestId;
+    const page = Math.max(1, Number(f?.page) || 1);
+    const size = [15, 30, 50, 100].includes(Number(f?.size)) ? Number(f?.size) : 30;
+    const search = String(f?.search ?? '').trim();
+    try {
+      const payload = await this.fetchContestRank(cid, page, size, search);
+      this.view.webview.postMessage({ type: 'contestRank', cid, payload, filters: { page, size, search } });
+    } catch (e: any) {
+      this.view.webview.postMessage({ type: 'contestRank', cid, payload: { error: e?.message ?? String(e), items: [], total: 0, page, size, pages: 0 }, filters: { page, size, search } });
     }
   }
 
@@ -800,6 +922,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  .contest-card .crow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
  .cbtn{align-self:flex-start;font-family:inherit;font-size:12px;padding:4px 10px;border:1px solid var(--vscode-button-border,var(--vscode-panel-border));border-radius:4px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer;}
  .cbtn:disabled{opacity:.55;cursor:default;}
+  .contest-progress{height:6px;background:rgba(127,127,127,.25);border-radius:4px;overflow:hidden;margin:2px 0 4px;}
+  .contest-progress-fill{height:100%;background:var(--vscode-progressBar-background,#0a84ff);}
+  .contest-countdown{font-variant-numeric:tabular-nums;color:var(--vscode-textLink-foreground,#0a84ff);}
  .id{color:var(--vscode-descriptionForeground);font-size:11.5px;}
  .ok{color:#67c23a;font-weight:700;}
  .diff{font-size:10px;padding:0 5px;border-radius:8px;color:#fff;flex:none;}
@@ -1038,6 +1163,9 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
  // 测验
   let contestStatusFilter='all';
   let contestTypeFilter='all';
+  let contestTab='problems';
+  let lastContestData=null;
+  let contestCountdownTimer=null;
   function contestStatusText(s){ return Number(s)<0 ? '未开始' : Number(s)===0 ? '进行中' : '已结束'; }
   function contestTypeText(t){ const n=Number(t); return n===0 ? 'ACM' : n===1 ? 'OI' : n===2 ? 'CTF' : ('赛制'+n); }
   function contestAuthText(a){ const n=Number(a); return n===0 ? '公开赛' : n===1 ? '私有赛' : n===2 ? '保护赛' : '需要密码'; }
@@ -1078,24 +1206,150 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
     if(!all.length) content.appendChild(el('div','empty','暂无测验。'));
     else if(!filtered.length) content.appendChild(el('div','empty','没有符合筛选条件的测验。'));
   }
+  function contestMs(v){
+    if(v==null || v==='') return NaN;
+    if(typeof v==='number') return v < 100000000000 ? v*1000 : v;
+    var n=Number(v);
+    if(Number.isFinite(n) && String(v).trim()!=='') return n < 100000000000 ? n*1000 : n;
+    return Date.parse(String(v).replace(' ','T'));
+  }
+  function contestRemain(ms){
+    if(!Number.isFinite(ms)) return '--:--:--';
+    if(ms<=0) return '已结束';
+    var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+    function p(n){ return (n<10?'0':'')+n; }
+    return p(h)+':'+p(m)+':'+p(sec);
+  }
+  function contestDuration(sec){
+    if(sec==null || sec==='' || !Number.isFinite(Number(sec))) return '-';
+    var s=Math.floor(Number(sec)); var h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+    return h>0 ? (h+'h '+m+'m') : (m>0 ? (m+'m') : (s+'s'));
+  }
+  function contestPageBar(payload,onPage){
+    var total=Number(payload&&payload.total)||0, size=Number(payload&&payload.size)||30;
+    var pages=Math.max(1,Number(payload&&payload.pages)||Math.ceil(total/size)||1);
+    var page=Math.min(Math.max(1,Number(payload&&payload.page)||1),pages);
+    var bar=el('div','pager');
+    var prev=el('button','pg','‹'); prev.disabled=page<=1; if(!prev.disabled) prev.addEventListener('click',function(){onPage(page-1);});
+    var next=el('button','pg','›'); next.disabled=page>=pages; if(!next.disabled) next.addEventListener('click',function(){onPage(page+1);});
+    bar.appendChild(prev); bar.appendChild(el('span','pgdots','第 '+page+' / '+pages+' 页')); bar.appendChild(next);
+    bar.appendChild(el('span','muted','共 '+total+' 条'));
+    return bar;
+  }
   function renderContestProblems(data){
+    if(contestCountdownTimer){ clearInterval(contestCountdownTimer); contestCountdownTimer=null; }
     content.innerHTML='';
-    const back=el('button','cbtn','‹ 返回测验');
-    back.addEventListener('click',function(){ vscode.postMessage({type:'contestBack'}); });
+    var previousCid=lastContestData&&lastContestData.cid;
+    lastContestData=data;
+    if(String(data.cid)!==String(previousCid)) contestTab='problems';
+    var back=el('button','cbtn','‹ 返回测验');
+    back.addEventListener('click',function(){ contestTab='problems'; lastContestData=null; vscode.postMessage({type:'contestBack'}); });
     content.appendChild(back);
     if(data.error){ content.appendChild(el('div','err',data.error)); return; }
-    content.appendChild(secTitle((data.contest&&data.contest.title)||'测验题目'));
-    const list=el('div');
-    (data.items||[]).forEach(function(p){
-      const it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','t',p.title));
-      if(p.ac){ it.appendChild(el('span','ok','✓')); }
-      else if(p.attempted){ const pg=el('span','pill',p.statusShort||'尝试'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); }
-      it.title=p.title;
-      it.addEventListener('click',function(){ vscode.postMessage({type:'openProblem', value:p.value}); });
-      list.appendChild(it);
+    var c=data.contest||{};
+    var card=el('div','contest-card');
+    var row=el('div','crow'); row.appendChild(el('span','ctitle',c.title||'测验详情'));
+    row.appendChild(el('span','badge',contestStatusText(c.status)));
+    row.appendChild(el('span','badge',contestTypeText(c.type)));
+    row.appendChild(el('span','badge',contestAuthText(c.auth)));
+    card.appendChild(row);
+    card.appendChild(el('div','cmeta',contestTime(c)+((c.count!=null)?' · '+c.count+' 人参与':'')));
+    var start=contestMs(c.startTime), end=contestMs(c.endTime), now=Date.now();
+    if(Number.isFinite(start)&&Number.isFinite(end)&&end>start){
+      var pct=Math.max(0,Math.min(100,(now-start)/(end-start)*100));
+      var track=el('div','contest-progress'); var fill=el('div','contest-progress-fill'); fill.style.width=pct.toFixed(1)+'%'; track.appendChild(fill); card.appendChild(track);
+      var remain=el('div','cmeta'); remain.appendChild(document.createTextNode('距结束 '));
+      var val=el('strong','contest-countdown',contestRemain(end-now)); remain.appendChild(val); card.appendChild(remain);
+      contestCountdownTimer=setInterval(function(){ var left=end-Date.now(); val.textContent=contestRemain(left); if(left<=0&&contestCountdownTimer){ clearInterval(contestCountdownTimer); contestCountdownTimer=null; } },1000);
+    }
+    content.appendChild(card);
+    var tabBar=el('div','filters');
+    [['problems','题目'],['submissions','提交'],['rank','排名']].forEach(function(pair){
+      var b=el('button','tab'+(contestTab===pair[0]?' active':''),pair[1]);
+      b.addEventListener('click',function(){ if(contestTab===pair[0])return; contestTab=pair[0]; renderContestProblems(lastContestData); });
+      tabBar.appendChild(b);
     });
-    content.appendChild(list);
-    if(!(data.items||[]).length) content.appendChild(el('div','empty','该测验暂无题目。'));
+    content.appendChild(tabBar);
+    if(contestTab==='problems'){
+      var list=el('div');
+      (data.items||[]).forEach(function(p){
+        var it=el('div','item'); it.appendChild(el('span','id',p.id)); it.appendChild(el('span','t',p.title));
+        if(p.ac){ it.appendChild(el('span','ok','✓')); }
+        else if(p.attempted){ var pg=el('span','pill',p.statusShort||'尝试'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); }
+        it.title=p.title;
+        it.addEventListener('click',function(){ vscode.postMessage({type:'openProblem', value:p.value}); });
+        list.appendChild(it);
+      });
+      content.appendChild(list);
+      if(!(data.items||[]).length) content.appendChild(el('div','empty','该测验暂无题目。'));
+      return;
+    }
+    if(contestTab==='submissions'){
+      var sd=data.submissions||{items:[]};
+      var fbar=el('div','filters');
+      var stSel=document.createElement('select');
+      [['','全部状态'],['0','AC'],['-1','WA'],['1','TLE'],['2','MLE'],['3','RE'],['-2','CE'],['-3','PE'],['4','SE'],['8','PA']].forEach(function(p){ var o=document.createElement('option'); o.value=p[0]; o.textContent=p[1]; stSel.appendChild(o); });
+      stSel.value=(data.submissionFilter&&data.submissionFilter.status)||'';
+      var mine=document.createElement('input'); mine.type='checkbox'; mine.checked=!!(data.submissionFilter&&data.submissionFilter.onlyMine);
+      var mineLab=el('label',''); mineLab.appendChild(mine); mineLab.appendChild(document.createTextNode('只看我的'));
+      var sz=document.createElement('select'); [15,30,50,100].forEach(function(n){ var o=document.createElement('option'); o.value=String(n); o.textContent=n+'条/页'; sz.appendChild(o); }); sz.value=String((data.submissionFilter&&data.submissionFilter.size)||30);
+      function fireSub(page){ vscode.postMessage({type:'contestSubmissions',cid:data.cid,page:page,size:Number(sz.value),onlyMine:mine.checked,status:stSel.value}); }
+      stSel.addEventListener('change',function(){fireSub(1);}); mine.addEventListener('change',function(){fireSub(1);}); sz.addEventListener('change',function(){fireSub(1);});
+      fbar.appendChild(stSel); fbar.appendChild(mineLab); fbar.appendChild(sz); content.appendChild(fbar);
+      if(sd.error){ content.appendChild(el('div','err',sd.error)); return; }
+      var subs=sd.items||[];
+      if(!subs.length){ content.appendChild(el('div','empty','暂无提交记录。')); return; }
+      var tbl=document.createElement('table'); var thead=document.createElement('thead'); var hr=document.createElement('tr');
+      ['RUNID','用户','题目','状态','分数','时间','内存','长度','语言','判题源','提交时间'].forEach(function(h){ hr.appendChild(el('th','',h)); }); thead.appendChild(hr); tbl.appendChild(thead);
+      var tb=document.createElement('tbody');
+      subs.forEach(function(r){
+        var tr=document.createElement('tr');
+        var td0=el('td'); var ra=el('a','runid','#'+r.submitId); ra.href='#'; ra.title='查看提交详情'; ra.addEventListener('click',function(e){e.preventDefault();vscode.postMessage({type:'openSubmission',submitId:r.submitId});}); td0.appendChild(ra); tr.appendChild(td0);
+        var tdu=el('td'); if(r.uid&&r.username){ var ua=el('a','runid',r.username); ua.href='#'; ua.addEventListener('click',function(e){e.preventDefault();vscode.postMessage({type:'openUser',uid:r.uid,username:r.username});}); tdu.appendChild(ua); } else tdu.textContent=r.username||''; tr.appendChild(tdu);
+        var tdp=el('td'); var pl=el('a','plink',(r.displayPid||'')+' '+(r.title||'')); pl.href='#'; pl.title='打开题目'; pl.addEventListener('click',function(e){e.preventDefault();vscode.postMessage({type:'openProblem',value:'contest/'+data.cid+'/problem/'+r.displayPid});}); tdp.appendChild(pl); tr.appendChild(tdp);
+        var tdst=el('td'); var pill=el('span','pill',r.statusShort||''); pill.style.background=r.statusColor||'#909399'; tdst.appendChild(pill); tdst.appendChild(document.createTextNode(' '+(r.statusName||''))); tr.appendChild(tdst);
+        tr.appendChild(el('td','',r.score==null?'-':String(r.score)));
+        tr.appendChild(el('td','',(r.time==null?'-':r.time)+' ms'));
+        tr.appendChild(el('td','',(r.memory==null?'-':r.memory)+' KB'));
+        tr.appendChild(el('td','',(r.length==null?'-':r.length)+' B'));
+        tr.appendChild(el('td','',r.language||''));
+        tr.appendChild(el('td','',r.judger||''));
+        tr.appendChild(el('td','',r.submitTime?String(r.submitTime):''));
+        tb.appendChild(tr);
+      });
+      tbl.appendChild(tb); content.appendChild(tbl);
+      content.appendChild(contestPageBar(sd,function(p){fireSub(p);}));
+      return;
+    }
+    var rd=data.rank||{items:[]};
+    var rbar=el('div','filters');
+    var search=document.createElement('input'); search.className='search'; search.placeholder='搜索用户名/昵称/学校'; search.value=(data.rankFilter&&data.rankFilter.search)||''; search.style.flex='1'; search.style.width='auto'; search.style.marginBottom='0';
+    var rsz=document.createElement('select'); [15,30,50,100].forEach(function(n){ var o=document.createElement('option'); o.value=String(n); o.textContent=n+'条/页'; rsz.appendChild(o); }); rsz.value=String((data.rankFilter&&data.rankFilter.size)||30);
+    function fireRank(page){ vscode.postMessage({type:'contestRank',cid:data.cid,page:page,size:Number(rsz.value),search:search.value.trim()}); }
+    search.addEventListener('keydown',function(e){if(e.key==='Enter')fireRank(1);});
+    rsz.addEventListener('change',function(){fireRank(1);});
+    rbar.appendChild(search); rbar.appendChild(rsz); content.appendChild(rbar);
+    if(rd.error){ content.appendChild(el('div','err',rd.error)); return; }
+    var ranks=rd.items||[];
+    if(!ranks.length){ content.appendChild(el('div','empty','暂无排名数据。')); return; }
+    var isOI=Number(c.type)===1;
+    var rtbl=document.createElement('table'); var rthead=document.createElement('thead'); var rhr=document.createElement('tr');
+    var rankCols=isOI?['#','用户','昵称','总分','总用时','学校']:['#','用户','昵称','AC/题数','总用时','学校'];
+    rankCols.forEach(function(h){ rhr.appendChild(el('th','',h)); }); rthead.appendChild(rhr); rtbl.appendChild(rthead);
+    var rtb=document.createElement('tbody');
+    ranks.forEach(function(r){
+      var tr=document.createElement('tr');
+      tr.appendChild(el('td','',r.rank===-1?'*':String(r.rank)));
+      var tdu=el('td'); var ua=el('a','runid',r.username||''); ua.href='#'; ua.addEventListener('click',function(e){e.preventDefault();vscode.postMessage({type:'openUser',uid:r.uid,username:r.username});}); tdu.appendChild(ua); tr.appendChild(tdu);
+      tr.appendChild(el('td','',r.nickname||r.realname||''));
+      if(isOI) tr.appendChild(el('td','',r.score==null?'-':String(r.score)));
+      else tr.appendChild(el('td','',(r.ac||0)+'/'+(r.total||0)));
+      tr.appendChild(el('td','',contestDuration(r.totalTime)));
+      tr.appendChild(el('td','',r.school||''));
+      rtb.appendChild(tr);
+    });
+    rtbl.appendChild(rtb); content.appendChild(rtbl);
+    content.appendChild(contestPageBar(rd,function(p){fireRank(p);}));
   }
   function probItem(p){ const it=el('div','item'); it.appendChild(el('span','id',p.id)); if(p.dlabel) it.appendChild(el('span','diff d'+(p.difficulty||0), p.dlabel)); it.appendChild(el('span','t',p.title)); if(p.ac){ it.appendChild(el('span','ok','✓')); } else if(p.attempted){ const pg=el('span','pill',p.statusShort||'未通过'); pg.style.background=p.statusColor||'#f56c6c'; it.appendChild(pg); } it.title=p.tip||p.title; it.addEventListener('click',()=>vscode.postMessage({type:'openProblem', value:p.id})); return it; }
  // 我的
@@ -1345,6 +1599,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
    if(m.type==='state'){ state.loggedIn=m.loggedIn; state.user=m.user; if(activeTab==='my'){ vscode.postMessage({type:'tab',tab:'my'}); } }
    else if(m.type==='data'){ if(m.tab!==activeTab) return; const tab=m.tab; if(tab==='problems') renderProblems(m.payload,m.keyword); else if(tab==='trainings') renderTrainings(m.payload); else if(tab==='contests'){ contestStatusFilter='all'; contestTypeFilter='all'; renderContests(m.payload); } else if(tab==='homework') renderHomework(m.payload); else if(tab==='my') renderMy(m.payload); }
     else if(m.type==='contestProblems'){ if(activeTab!=='contests') return; renderContestProblems(m); }
+    else if(m.type==='contestSubmissions'){ if(activeTab!=='contests'||!lastContestData) return; lastContestData.cid=m.cid; lastContestData.submissions=m.payload; lastContestData.submissionFilter=m.filters; contestTab='submissions'; renderContestProblems(lastContestData); }
+    else if(m.type==='contestRank'){ if(activeTab!=='contests'||!lastContestData) return; lastContestData.cid=m.cid; lastContestData.rank=m.payload; lastContestData.rankFilter=m.filters; contestTab='rank'; renderContestProblems(lastContestData); }
    else if(m.type==='trainingProblems'){ fillTraining(m.tid, m.items, m.error); }
    else if(m.type==='reload'){ if(activeTab==='trainings'){ reopenTrainingTids = Object.keys(window.__trainingBoxes||{}).filter(function(tid){ var k=window.__trainingBoxes[tid]; return k && k.style.display!=='none'; }).map(Number); } vscode.postMessage({type:'tab',tab:activeTab,keyword:problemKeyword}); }
    else if(m.type==='focusSearch'){ const i=document.querySelector('input.search'); if(i) i.focus(); }
